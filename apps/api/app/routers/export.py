@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import Response, StreamingResponse
 
 from app.dependencies import get_report_exporter, get_repository
 from app.models.api import AnalyzeResponse, ExportFormat
@@ -34,11 +34,16 @@ async def export_report(
         raise HTTPException(status_code=404, detail="Report not found.")
 
     if format == ExportFormat.csv:
-        return PlainTextResponse(
-            content=exporter.to_csv(report),
+        filename = exporter.build_filename(report.query, "csv")
+        return StreamingResponse(
+            exporter.iter_csv(report),
             media_type="text/csv",
-            headers={"Content-Disposition": f'attachment; filename="{report_id}.csv"'},
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
         )
 
-    return JSONResponse(content=exporter.to_json_payload(report))
-
+    filename = exporter.build_filename(report.query, "json")
+    return Response(
+        content=exporter.to_json_text(report),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )

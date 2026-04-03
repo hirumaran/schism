@@ -6,10 +6,12 @@ from fastapi import Request
 
 from app.config import Settings, get_settings
 from app.repositories.sqlite import SQLiteRepository
+from app.services.analysis_service import AnalysisService
 from app.services.contradiction_engine import ContradictionEngine
 from app.services.embedding import EmbeddingService
 from app.services.ingestion.service import IngestionService
 from app.services.llm_client import LLMClient, ProviderContext
+from app.services.paper_input import PaperInputParser
 from app.services.report_exporter import ReportExporter
 from app.services.vector_store import VectorStore
 
@@ -23,7 +25,12 @@ def get_repository() -> SQLiteRepository:
 @lru_cache
 def get_ingestion_service() -> IngestionService:
     settings = get_settings()
-    return IngestionService(user_agent=settings.user_agent, contact_email=settings.contact_email)
+    return IngestionService(
+        user_agent=settings.user_agent,
+        contact_email=settings.contact_email,
+        repository=get_repository(),
+        settings=settings,
+    )
 
 
 @lru_cache
@@ -48,6 +55,11 @@ def get_report_exporter() -> ReportExporter:
 
 
 @lru_cache
+def get_paper_input_parser() -> PaperInputParser:
+    return PaperInputParser()
+
+
+@lru_cache
 def get_contradiction_engine() -> ContradictionEngine:
     settings: Settings = get_settings()
     return ContradictionEngine(
@@ -57,6 +69,16 @@ def get_contradiction_engine() -> ContradictionEngine:
         llm_client=get_llm_client(),
         embedding_service=get_embedding_service(),
         vector_store=get_vector_store(),
+    )
+
+
+@lru_cache
+def get_analysis_service() -> AnalysisService:
+    settings = get_settings()
+    return AnalysisService(
+        settings=settings,
+        repository=get_repository(),
+        engine=get_contradiction_engine(),
     )
 
 

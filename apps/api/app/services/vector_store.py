@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from app.config import Settings
-from app.models.claim import PaperClaim
+
+logger = logging.getLogger(__name__)
 
 
 class VectorStore:
@@ -28,8 +30,28 @@ class VectorStore:
             "last_error": self._last_error,
         }
 
-    def upsert_claims(self, claims: list[PaperClaim], embeddings: list[list[float]]) -> None:
-        if not self.settings.enable_qdrant or not claims or not embeddings:
+    def get_vector(self, embedding_id: str | None) -> list[float] | None:
+        if not self.settings.enable_qdrant or not embedding_id:
+            return None
+
+        try:
+            client = self._get_client()
+            if client is None:
+                return None
+            self._ensure_collection(client, 384)
+            points = client.retrieve(collection_name=self.settings.qdrant_collection, ids=[embedding_id], with_vectors=True)
+            if not points:
+                return None
+            vector = points[0].vector
+            if isinstance(vector, list):
+                return [float(value) for value in vector]
+        except Exception as exc:
+            self._last_error = str(exc)
+            logger.debug("vector_fetch_failed", extra={"embedding_id": embedding_id, "error": str(exc)})
+        return None
+
+    def upsert_embeddings(self, points: list[dict[str, Any]], dimensions: int) -> None:
+        if not self.settings.enable_qdrant or not points:
             return
 
         try:
@@ -39,25 +61,20 @@ class VectorStore:
 
             from qdrant_client.http import models as qmodels
 
-            self._ensure_collection(client, len(embeddings[0]))
-            points = [
+            self._ensure_collection(client, dimensions)
+            payload = [
                 qmodels.PointStruct(
-                    id=claim.paper_id,
-                    vector=embedding,
-                    payload={
-                        "paper_id": claim.paper_id,
-                        "provider": claim.provider,
-                        "model": claim.model,
-                        "claim": claim.claim,
-                        "quality": claim.quality,
-                    },
+                    id=point["id"],
+                    vector=point["vector"],
+                    payload=point.get("payload", {}),
                 )
-                for claim, embedding in zip(claims, embeddings, strict=False)
+                for point in points
             ]
-            client.upsert(collection_name=self.settings.qdrant_collection, points=points)
+            client.upsert(collection_name=self.settings.qdrant_collection, points=payload)
             self._last_error = None
         except Exception as exc:
             self._last_error = str(exc)
+            logger.warning("vector_upsert_failed", extra={"error": str(exc)})
 
     def _get_client(self) -> Any | None:
         if self._client is not None:
@@ -86,4 +103,3 @@ class VectorStore:
                 vectors_config=qmodels.VectorParams(size=dimensions, distance=qmodels.Distance.COSINE),
             )
         self._collection_ready = True
-

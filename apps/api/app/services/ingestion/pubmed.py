@@ -5,10 +5,12 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from app.models.paper import Paper
+from app.services.ingestion.base import BaseIngester, RateLimiter
 
 
-class PubMedClient:
+class PubMedClient(BaseIngester):
     source = "pubmed"
+    rate_limiter = RateLimiter(concurrency=1, delay_seconds=0.35)
 
     def __init__(self, user_agent: str, contact_email: str | None) -> None:
         self.user_agent = user_agent
@@ -28,7 +30,8 @@ class PubMedClient:
             timeout=20.0,
             headers={"User-Agent": self.user_agent},
         ) as client:
-            search_response = await client.get(
+            search_response = await self.fetch_with_retry(
+                client,
                 "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi",
                 params=params,
             )
@@ -38,7 +41,8 @@ class PubMedClient:
             if not identifiers:
                 return []
 
-            fetch_response = await client.get(
+            fetch_response = await self.fetch_with_retry(
+                client,
                 "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi",
                 params={
                     "db": "pubmed",
@@ -123,4 +127,3 @@ class PubMedClient:
             if candidate and candidate.isdigit():
                 return int(candidate)
         return None
-

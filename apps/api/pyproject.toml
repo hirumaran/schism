@@ -8,10 +8,17 @@ version = "0.1.0"
 description = "FastAPI backend for Schism contradiction detection"
 requires-python = ">=3.11"
 dependencies = [
+  "anthropic>=0.36.0",
+  "arxiv>=2.1.0",
   "fastapi>=0.116.0",
   "httpx>=0.28.0",
   "numpy>=2.2.0",
   "pydantic>=2.11.0",
+  "pydantic-settings>=2.5.0",
+  "pypdf==4.3.0",
+  "rapidfuzz==3.9.0",
+  "scikit-learn>=1.5.0",
+  "openai>=1.51.0",
   "uvicorn[standard]>=0.35.0",
 ]
 
@@ -22,8 +29,16 @@ ml = [
   "hdbscan>=0.8.40",
 ]
 dev = [
-  "pytest>=8.4.0",
+  "pytest==8.3.0",
+  "pytest-asyncio==0.24.0",
 ]
 
 [tool.setuptools.packages.find]
 include = ["app*"]
+
+[tool.pytest.ini_options]
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = [
+  "ignore:'asyncio.iscoroutinefunction' is deprecated and slated for removal in Python 3.16.*:DeprecationWarning:pytest_asyncio.plugin",
+  "ignore:'asyncio.get_event_loop_policy' is deprecated and slated for removal in Python 3.16.*:DeprecationWarning:pytest_asyncio.plugin",
+]

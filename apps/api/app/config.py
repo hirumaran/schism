@@ -38,6 +38,15 @@ class Settings:
     llm_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("SCHISM_LLM_TIMEOUT_SECONDS", "45")))
     claim_concurrency: int = field(default_factory=lambda: int(os.getenv("SCHISM_CLAIM_CONCURRENCY", "4")))
     scoring_concurrency: int = field(default_factory=lambda: int(os.getenv("SCHISM_SCORING_CONCURRENCY", "4")))
+    openai_claim_concurrency: int = field(default_factory=lambda: int(os.getenv("SCHISM_OPENAI_CLAIM_CONCURRENCY", "15")))
+    anthropic_claim_concurrency: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_ANTHROPIC_CLAIM_CONCURRENCY", "8"))
+    )
+    query_cache_hours: int = field(default_factory=lambda: int(os.getenv("SCHISM_QUERY_CACHE_HOURS", "6")))
+    analysis_cache_hours: int = field(default_factory=lambda: int(os.getenv("SCHISM_ANALYSIS_CACHE_HOURS", "24")))
+    job_timeout_minutes: int = field(default_factory=lambda: int(os.getenv("SCHISM_JOB_TIMEOUT_MINUTES", "15")))
+    log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", os.getenv("SCHISM_LOG_LEVEL", "INFO")))
+    log_format: str = field(default_factory=lambda: os.getenv("LOG_FORMAT", "human"))
 
     @property
     def sqlite_path(self) -> Path:
@@ -50,4 +59,3 @@ class Settings:
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

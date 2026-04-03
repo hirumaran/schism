@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import math
 import re
 from typing import Any
+
+BATCH_SIZE = 64
 
 
 def cosine_similarity(vector_a: list[float], vector_b: list[float]) -> float:
@@ -27,14 +30,22 @@ class EmbeddingService:
     def backend_name(self) -> str:
         return "sentence-transformers" if self._load_sentence_transformer() is not None else "hashing"
 
-    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+    async def embed_texts(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
 
         model = self._load_sentence_transformer()
         if model is not None:
-            encoded = model.encode(texts, normalize_embeddings=True)
-            return [[float(value) for value in row] for row in encoded.tolist()]
+            all_embeddings: list[list[float]] = []
+            loop = asyncio.get_running_loop()
+            for index in range(0, len(texts), BATCH_SIZE):
+                batch = texts[index : index + BATCH_SIZE]
+                batch_embeddings = await loop.run_in_executor(
+                    None,
+                    lambda b=batch: model.encode(b, normalize_embeddings=True).tolist(),
+                )
+                all_embeddings.extend([[float(value) for value in row] for row in batch_embeddings])
+            return all_embeddings
 
         return [self._hash_embedding(text) for text in texts]
 
@@ -46,7 +57,7 @@ class EmbeddingService:
         try:
             from sentence_transformers import SentenceTransformer
 
-            self._model = SentenceTransformer(self.model_name)
+            self._model = SentenceTransformer(self.model_name, local_files_only=True)
         except Exception:
             self._model = None
         return self._model
@@ -68,4 +79,3 @@ class EmbeddingService:
         if norm == 0.0:
             return vector
         return [value / norm for value in vector]
-

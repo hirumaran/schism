@@ -1,16 +1,21 @@
 from __future__ import annotations
 
+import asyncio
+
 import httpx
 
 from app.models.paper import Paper
+from app.services.ingestion.base import BaseIngester, RateLimiter
 
 
-class SemanticScholarClient:
+class SemanticScholarClient(BaseIngester):
     source = "semantic_scholar"
+    rate_limiter = RateLimiter(concurrency=5, delay_seconds=0.05)
 
     async def search(self, query: str, max_results: int) -> list[Paper]:
         async with httpx.AsyncClient(timeout=20.0) as client:
-            response = await client.get(
+            response = await self.fetch_with_retry(
+                client,
                 "https://api.semanticscholar.org/graph/v1/paper/search",
                 params={
                     "query": query,
@@ -57,3 +62,29 @@ class SemanticScholarClient:
             )
         return papers
 
+    async def enrich_citations(self, papers: list[Paper]) -> list[Paper]:
+        semaphore = asyncio.Semaphore(5)
+
+        async def enrich(paper: Paper) -> None:
+            async with semaphore:
+                try:
+                    async with httpx.AsyncClient(timeout=15.0) as client:
+                        response = await self.fetch_with_retry(
+                            client,
+                            f"https://api.semanticscholar.org/graph/v1/paper/{paper.external_id}",
+                            params={"fields": "citationCount,influentialCitationCount"},
+                        )
+                        response.raise_for_status()
+                        payload = response.json()
+                except Exception:
+                    return
+
+                citation_count = payload.get("citationCount")
+                influential = payload.get("influentialCitationCount")
+                if isinstance(citation_count, int):
+                    paper.citation_count = citation_count
+                if isinstance(influential, int):
+                    paper.influential_citation_count = influential
+
+        await asyncio.gather(*(enrich(paper) for paper in papers))
+        return papers

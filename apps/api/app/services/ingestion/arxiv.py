@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 import httpx
 
 from app.models.paper import Paper
+from app.services.ingestion.base import BaseIngester, RateLimiter
 
 ATOM_NS = {
     "atom": "http://www.w3.org/2005/Atom",
@@ -12,8 +13,9 @@ ATOM_NS = {
 }
 
 
-class ArxivClient:
+class ArxivClient(BaseIngester):
     source = "arxiv"
+    rate_limiter = RateLimiter(concurrency=1, delay_seconds=0.4)
 
     def __init__(self, user_agent: str) -> None:
         self.user_agent = user_agent
@@ -23,7 +25,8 @@ class ArxivClient:
             timeout=20.0,
             headers={"User-Agent": self.user_agent},
         ) as client:
-            response = await client.get(
+            response = await self.fetch_with_retry(
+                client,
                 "http://export.arxiv.org/api/query",
                 params={
                     "search_query": f'all:"{query}"',
@@ -74,4 +77,3 @@ class ArxivClient:
             return int(value[:4])
         except ValueError:
             return None
-

@@ -18,10 +18,9 @@ async def healthcheck(
 ) -> dict[str, object]:
     return {
         "status": "ok",
-        "app": settings.app_name,
+        "app": "schism",
         "embedding_backend": embedding_service.backend_name(),
         "vector_store": vector_store.health(),
         "supported_sources": ["arxiv", "semantic_scholar", "openalex", "pubmed"],
         "supported_providers": ["mock", "openai", "anthropic", "ollama"],
     }
-

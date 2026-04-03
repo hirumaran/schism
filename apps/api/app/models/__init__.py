@@ -1,17 +1,50 @@
-from .api import AnalyzeRequest, ExportFormat, SearchRequest, SearchResponse
-from .claim import ClaimDirection, PaperClaim
-from .contradiction import ContradictionPair, ContradictionType, build_pair_key
-from .paper import Paper, build_paper_id, normalize_text
-from .report import AnalysisReport, ClaimCluster, SearchRun
+from .api import (
+    AnalyzeAcceptedResponse,
+    AnalyzePaperTextRequest,
+    AnalyzeRequest,
+    ExportFormat,
+    JobLookupResponse,
+    JobResultsFilter,
+    JobResultsResponse,
+    JobStatsResponse,
+    SearchRequest,
+    SearchResponse,
+)
+from .claim import ClaimDirection, ClaimMagnitude, InputClaim, PaperClaim
+from .contradiction import ContradictionMode, ContradictionPair, ContradictionType, build_pair_key, canonicalize_pair
+from .paper import (
+    Paper,
+    build_paper_id,
+    build_query_cache_key,
+    jaccard_similarity,
+    normalize_query,
+    normalize_text,
+    normalize_title_for_dedupe,
+    tokenize_text,
+    word_count,
+)
+from .report import AnalysisJob, AnalysisReport, ClaimCluster, InputPaperMetadata, JobStatus, SearchRun
 
 __all__ = [
+    "AnalyzeAcceptedResponse",
+    "AnalyzePaperTextRequest",
+    "AnalysisJob",
     "AnalysisReport",
     "AnalyzeRequest",
     "ClaimCluster",
     "ClaimDirection",
+    "ClaimMagnitude",
+    "InputClaim",
+    "ContradictionMode",
     "ContradictionPair",
     "ContradictionType",
     "ExportFormat",
+    "InputPaperMetadata",
+    "JobLookupResponse",
+    "JobResultsFilter",
+    "JobResultsResponse",
+    "JobStatsResponse",
+    "JobStatus",
     "Paper",
     "PaperClaim",
     "SearchRequest",
@@ -19,6 +52,12 @@ __all__ = [
     "SearchRun",
     "build_pair_key",
     "build_paper_id",
+    "build_query_cache_key",
+    "canonicalize_pair",
+    "jaccard_similarity",
+    "normalize_query",
     "normalize_text",
+    "normalize_title_for_dedupe",
+    "tokenize_text",
+    "word_count",
 ]
-

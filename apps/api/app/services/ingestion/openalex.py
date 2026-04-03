@@ -3,6 +3,7 @@ from __future__ import annotations
 import httpx
 
 from app.models.paper import Paper
+from app.services.ingestion.base import BaseIngester, RateLimiter
 
 
 def _reconstruct_abstract(index: dict[str, list[int]] | None) -> str | None:
@@ -20,8 +21,9 @@ def _reconstruct_abstract(index: dict[str, list[int]] | None) -> str | None:
     return text or None
 
 
-class OpenAlexClient:
+class OpenAlexClient(BaseIngester):
     source = "openalex"
+    rate_limiter = RateLimiter(concurrency=3, delay_seconds=0.1)
 
     def __init__(self, user_agent: str, contact_email: str | None) -> None:
         self.user_agent = user_agent
@@ -40,7 +42,7 @@ class OpenAlexClient:
             timeout=20.0,
             headers={"User-Agent": self.user_agent},
         ) as client:
-            response = await client.get("https://api.openalex.org/works", params=params)
+            response = await self.fetch_with_retry(client, "https://api.openalex.org/works", params=params)
             response.raise_for_status()
 
         payload = response.json()
@@ -78,4 +80,3 @@ class OpenAlexClient:
                 )
             )
         return papers
-

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-import json
+import asyncio
+import logging
 import re
 from dataclasses import dataclass
 from typing import Any
@@ -8,35 +9,133 @@ from typing import Any
 import httpx
 
 from app.config import Settings
-from app.models.claim import ClaimDirection, PaperClaim
-from app.models.contradiction import ContradictionPair, ContradictionType
-from app.models.paper import Paper, normalize_text
+from app.models.claim import ClaimDirection, ClaimMagnitude, InputClaim, PaperClaim
+from app.models.contradiction import ContradictionMode, ContradictionPair, ContradictionType
+from app.models.paper import Paper, jaccard_similarity, tokenize_text, word_count
+from app.services.llm_parser import ClaimResult, ContradictionResult, InputClaimsResult, parse_llm_json
 
-CLAIM_PROMPT = """
-Extract the primary conclusion of this paper as a single declarative sentence.
-Focus on the main empirical finding, not the method.
-Return JSON with keys:
-- claim: string
-- direction: positive | negative | null
-- confidence: 0.0 to 1.0
-- quality: 0.0 to 1.0
-- rationale: short string
+logger = logging.getLogger(__name__)
 
-Paper title: {title}
-Paper abstract: {abstract}
-"""
+CLAIM_SYSTEM_PROMPT = """
+You are a scientific claim extractor. Your only job is to identify
+the single most important empirical finding from a research paper
+abstract. You must return valid JSON only - no markdown, no
+explanation, no preamble.
 
-CONTRADICTION_PROMPT = """
-Paper A claim: {claim_a}
-Paper B claim: {claim_b}
+Rules:
+- The claim must be a specific, falsifiable statement of result
+- The claim must include the direction of the effect
+- Do not include methodology, sample size, or caveats in the claim
+- Do not start with "This study", "The paper", "We found"
+- Write in third person declarative form
+- If no clear empirical finding exists, set found=false
+""".strip()
 
-Rate the contradiction between these two claims.
-Return JSON with keys:
-- score: 0.0 to 1.0
-- type: direct | conditional | methodological | null
-- explanation: short string
-- is_contradiction: boolean
-"""
+CLAIM_USER_PROMPT = """
+Title: {title}
+Abstract: {abstract}
+
+Return JSON:
+{{
+  "found": true,
+  "claim": "single declarative sentence with direction of effect",
+  "direction": "positive|negative|null",
+  "magnitude": "strong|moderate|weak|null",
+  "population": "who or what was studied, 2-4 words",
+  "outcome": "what was measured, 2-4 words",
+  "confidence": 0.0
+}}
+""".strip()
+
+CLAIM_FALLBACK_PROMPT = """
+Return valid JSON only:
+{
+  "found": true,
+  "claim": "single finding sentence",
+  "direction": "positive|negative|null",
+  "confidence": 0.0
+}
+
+Title: {title}
+Abstract: {abstract}
+""".strip()
+
+INPUT_CLAIMS_SYSTEM_PROMPT = """
+You are extracting research claims from a paper that a user has
+provided. Extract ALL distinct empirical claims or findings, not
+just one. Each claim should be independently searchable.
+Return valid JSON only.
+""".strip()
+
+INPUT_CLAIMS_USER_PROMPT = """
+{best_section}
+
+Extract up to 5 distinct empirical claims from this text.
+For each claim identify what could be searched to find
+contradicting evidence.
+
+Return JSON:
+{{
+  "claims": [
+    {{
+      "claim": "declarative sentence",
+      "direction": "positive|negative|null",
+      "search_query": "3-6 word query to find contradicting papers",
+      "population": "who/what was studied",
+      "outcome": "what was measured"
+    }}
+  ]
+}}
+""".strip()
+
+CONTRADICTION_SYSTEM_PROMPT = """
+You are a scientific contradiction analyst. You compare pairs of
+research findings and determine whether they genuinely contradict
+each other. Return valid JSON only - no markdown, no explanation.
+
+Contradiction types:
+- "direct": same population, same outcome, opposite direction
+- "conditional": same outcome, opposite direction, but different
+  conditions, doses, or subgroups
+- "methodological": same question, different methodology leads to
+  different conclusions
+- "null": findings are compatible when full context is considered
+""".strip()
+
+CONTRADICTION_USER_PROMPT = """
+Finding A (from {year_a}): "{claim_a}"
+Population A: {population_a}
+Outcome A: {outcome_a}
+
+Finding B (from {year_b}): "{claim_b}"
+Population B: {population_b}
+Outcome B: {outcome_b}
+
+Questions:
+1. Do these findings genuinely contradict each other?
+2. Could both be true simultaneously under different conditions?
+3. Is this a direct contradiction or a methodological difference?
+
+Return JSON:
+{{
+  "is_contradiction": false,
+  "score": 0.0,
+  "type": "direct|conditional|methodological|null",
+  "explanation": "2-3 sentences explaining why these do or do not contradict",
+  "could_both_be_true": true,
+  "key_difference": "the most likely reason for the discrepancy in 8 words or fewer"
+}}
+""".strip()
+
+HEDGING_PATTERNS = [
+    "this paper investigates",
+    "this study investigates",
+    "we propose a method",
+    "further research is needed",
+    "future research is needed",
+    "this article reviews",
+    "this paper presents",
+]
 
 
 @dataclass(slots=True)
@@ -56,31 +155,92 @@ class LLMClient:
         self.settings = settings
 
     async def extract_claim(self, paper: Paper, context: ProviderContext) -> PaperClaim:
-        fallback = self._heuristic_claim(paper, context)
+        if word_count(paper.abstract) < 80:
+            return PaperClaim(
+                paper_id=paper.id,
+                provider=context.normalized_provider,
+                model=context.model,
+                found=False,
+                claim=None,
+                confidence=0.0,
+                quality=0.0,
+                skip_reason="abstract_too_short",
+                discarded=True,
+                raw={"mode": "skipped"},
+            )
+
         if self._should_use_fallback(context):
-            return fallback
+            return self._finalize_claim(self._heuristic_claim(paper, context))
 
-        prompt = CLAIM_PROMPT.format(
-            title=paper.title.strip(),
-            abstract=(paper.abstract or "").strip() or "No abstract available.",
+        primary = await self._extract_claim_via_llm(
+            paper=paper,
+            context=context,
+            user_prompt=CLAIM_USER_PROMPT.format(title=paper.title.strip(), abstract=(paper.abstract or "").strip()),
         )
+        if primary is not None:
+            return self._finalize_claim(primary)
 
-        try:
-            payload = await self._invoke_json(prompt, context)
-        except Exception:
-            return fallback
+        fallback = await self._extract_claim_via_llm(
+            paper=paper,
+            context=context,
+            user_prompt=CLAIM_FALLBACK_PROMPT.format(title=paper.title.strip(), abstract=(paper.abstract or "").strip()),
+        )
+        if fallback is not None:
+            return self._finalize_claim(fallback)
 
         return PaperClaim(
             paper_id=paper.id,
             provider=context.normalized_provider,
             model=context.model,
-            claim=str(payload.get("claim") or fallback.claim).strip(),
-            direction=self._coerce_direction(payload.get("direction")) or fallback.direction,
-            confidence=self._bounded_float(payload.get("confidence"), fallback.confidence),
-            quality=self._bounded_float(payload.get("quality"), fallback.quality),
-            rationale=str(payload.get("rationale") or fallback.rationale or "").strip() or None,
-            raw=payload,
+            found=False,
+            claim=None,
+            confidence=0.0,
+            quality=0.0,
+            skip_reason="extraction_failed",
+            discarded=True,
+            raw={"mode": "failed"},
         )
+
+    async def extract_input_claims(self, best_section: str, context: ProviderContext) -> list[InputClaim]:
+        if self._should_use_fallback(context):
+            return self._heuristic_input_claims(best_section)
+
+        try:
+            raw_content = await self._invoke_text(
+                system_prompt=INPUT_CLAIMS_SYSTEM_PROMPT,
+                user_prompt=INPUT_CLAIMS_USER_PROMPT.format(best_section=best_section.strip()),
+                context=context,
+            )
+        except Exception as exc:
+            logger.warning("input_claim_extraction_request_failed", extra={"error": str(exc)})
+            return self._heuristic_input_claims(best_section)
+
+        result = parse_llm_json(raw_content, InputClaimsResult)
+        if result is None:
+            return self._heuristic_input_claims(best_section)
+
+        parsed = InputClaimsResult.model_validate(result.model_dump())
+        claims: list[InputClaim] = []
+        seen_queries: set[str] = set()
+        for item in parsed.claims[:5]:
+            claim_text = re.sub(r"\s+", " ", item.claim.strip())
+            search_query = re.sub(r"\s+", " ", item.search_query.strip())
+            if not claim_text or not search_query:
+                continue
+            normalized_query = search_query.lower()
+            if normalized_query in seen_queries:
+                continue
+            seen_queries.add(normalized_query)
+            claims.append(
+                InputClaim(
+                    claim=claim_text,
+                    direction=ClaimDirection(item.direction),
+                    search_query=search_query,
+                    population=(item.population or "").strip() or None,
+                    outcome=(item.outcome or "").strip() or None,
+                )
+            )
+        return claims
 
     async def score_contradiction(
         self,
@@ -94,113 +254,188 @@ class LLMClient:
         if self._should_use_fallback(context):
             return fallback
 
-        prompt = CONTRADICTION_PROMPT.format(claim_a=claim_a.claim, claim_b=claim_b.claim)
-        try:
-            payload = await self._invoke_json(prompt, context)
-        except Exception:
+        raw_content = await self._invoke_text(
+            system_prompt=CONTRADICTION_SYSTEM_PROMPT,
+            user_prompt=CONTRADICTION_USER_PROMPT.format(
+                year_a=paper_a.year or "unknown",
+                claim_a=claim_a.claim or "",
+                population_a=claim_a.population or paper_a.population or "unknown",
+                outcome_a=claim_a.outcome or paper_a.outcome or "unknown",
+                year_b=paper_b.year or "unknown",
+                claim_b=claim_b.claim or "",
+                population_b=claim_b.population or paper_b.population or "unknown",
+                outcome_b=claim_b.outcome or paper_b.outcome or "unknown",
+            ),
+            context=context,
+        )
+        result = parse_llm_json(raw_content, ContradictionResult)
+        if result is None:
             return fallback
 
+        parsed = ContradictionResult.model_validate(result.model_dump())
         return ContradictionPair(
             paper_a_id=paper_a.id,
             paper_b_id=paper_b.id,
+            mode=ContradictionMode.corpus_vs_corpus,
             provider=context.normalized_provider,
             model=context.model,
-            score=self._bounded_float(payload.get("score"), fallback.score),
-            type=self._coerce_type(payload.get("type")) or fallback.type,
-            explanation=str(payload.get("explanation") or fallback.explanation).strip(),
-            is_contradiction=self._coerce_bool(payload.get("is_contradiction"), fallback.is_contradiction),
-            raw=payload,
+            raw_score=parsed.score,
+            score=parsed.score,
+            type=ContradictionType(parsed.type),
+            explanation=parsed.explanation.strip(),
+            is_contradiction=parsed.is_contradiction,
+            could_both_be_true=parsed.could_both_be_true,
+            key_difference=(parsed.key_difference or "").strip() or None,
+            paper_a_claim=claim_a.claim,
+            paper_b_claim=claim_b.claim,
+            raw={"mode": "llm"},
         )
 
-    async def _invoke_json(self, prompt: str, context: ProviderContext) -> dict[str, Any]:
+    async def _extract_claim_via_llm(
+        self, paper: Paper, context: ProviderContext, user_prompt: str
+    ) -> PaperClaim | None:
+        try:
+            raw_content = await self._invoke_text(
+                system_prompt=CLAIM_SYSTEM_PROMPT,
+                user_prompt=user_prompt,
+                context=context,
+            )
+        except Exception as exc:
+            logger.warning("claim_extraction_request_failed", extra={"error": str(exc)})
+            return None
+
+        result = parse_llm_json(raw_content, ClaimResult)
+        if result is None:
+            return None
+
+        parsed = ClaimResult.model_validate(result.model_dump())
+        return PaperClaim(
+            paper_id=paper.id,
+            provider=context.normalized_provider,
+            model=context.model,
+            found=parsed.found,
+            claim=(parsed.claim or "").strip() or None,
+            direction=ClaimDirection(parsed.direction),
+            magnitude=ClaimMagnitude(parsed.magnitude),
+            population=(parsed.population or "").strip() or None,
+            outcome=(parsed.outcome or "").strip() or None,
+            confidence=parsed.confidence,
+            quality=parsed.confidence,
+            raw={"mode": "llm"},
+        )
+
+    async def _call_with_retry(self, call_fn, max_attempts: int = 3):
+        for attempt in range(max_attempts):
+            try:
+                return await call_fn()
+            except httpx.HTTPStatusError as exc:
+                response = exc.response
+                if response.status_code == 429:
+                    wait = float(2**attempt)
+                    logger.warning(
+                        "llm_rate_limited",
+                        extra={"attempt": attempt, "wait_seconds": wait, "status_code": response.status_code},
+                    )
+                    await asyncio.sleep(wait)
+                    continue
+                if response.status_code >= 500 and attempt < max_attempts - 1:
+                    await asyncio.sleep(1.0)
+                    continue
+                raise
+            except (httpx.TimeoutException, httpx.ConnectError):
+                if attempt == max_attempts - 1:
+                    raise
+                await asyncio.sleep(1.0)
+        raise RuntimeError(f"LLM call failed after {max_attempts} attempts")
+
+    async def _invoke_text(self, system_prompt: str, user_prompt: str, context: ProviderContext) -> str:
         provider = context.normalized_provider
         timeout = httpx.Timeout(self.settings.llm_timeout_seconds)
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             if provider == "openai":
-                response = await client.post(
-                    self._provider_url(provider, context.base_url),
-                    headers={
-                        "Authorization": f"Bearer {context.api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": context.model or "gpt-4.1-mini",
-                        "temperature": 0.1,
-                        "response_format": {"type": "json_object"},
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are a careful research assistant. Return valid JSON only.",
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                    },
-                )
+                async def call_openai():
+                    response = await client.post(
+                        self._provider_url(provider, context.base_url),
+                        headers={
+                            "Authorization": f"Bearer {context.api_key}",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": context.model or "gpt-4.1-mini",
+                            "temperature": 0.1,
+                            "n": 1,
+                            "response_format": {"type": "json_object"},
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                        },
+                    )
+                    response.raise_for_status()
+                    return response
+
+                response = await self._call_with_retry(call_openai)
                 response.raise_for_status()
                 payload = response.json()
-                content = payload["choices"][0]["message"]["content"]
-                return self._extract_json(content)
+                return payload["choices"][0]["message"]["content"]
 
             if provider == "anthropic":
-                response = await client.post(
-                    self._provider_url(provider, context.base_url),
-                    headers={
-                        "x-api-key": context.api_key or "",
-                        "anthropic-version": "2023-06-01",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": context.model or "claude-3-5-sonnet-latest",
-                        "max_tokens": 512,
-                        "temperature": 0.1,
-                        "system": "You are a careful research assistant. Return valid JSON only.",
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
+                async def call_anthropic():
+                    response = await client.post(
+                        self._provider_url(provider, context.base_url),
+                        headers={
+                            "x-api-key": context.api_key or "",
+                            "anthropic-version": "2023-06-01",
+                            "Content-Type": "application/json",
+                        },
+                        json={
+                            "model": context.model or "claude-3-5-sonnet-latest",
+                            "max_tokens": 512,
+                            "temperature": 0.1,
+                            "system": system_prompt,
+                            "messages": [{"role": "user", "content": user_prompt}],
+                        },
+                    )
+                    response.raise_for_status()
+                    return response
+
+                response = await self._call_with_retry(call_anthropic)
                 response.raise_for_status()
                 payload = response.json()
-                content = "".join(
+                return "".join(
                     block.get("text", "")
                     for block in payload.get("content", [])
                     if block.get("type") == "text"
                 )
-                return self._extract_json(content)
 
             if provider == "ollama":
                 headers = {"Content-Type": "application/json"}
                 if context.api_key:
                     headers["Authorization"] = f"Bearer {context.api_key}"
-                response = await client.post(
-                    self._provider_url(provider, context.base_url),
-                    headers=headers,
-                    json={
-                        "model": context.model or "llama3.1",
-                        "stream": False,
-                        "format": "json",
-                        "messages": [
-                            {
-                                "role": "system",
-                                "content": "You are a careful research assistant. Return valid JSON only.",
-                            },
-                            {"role": "user", "content": prompt},
-                        ],
-                    },
-                )
+                async def call_ollama():
+                    response = await client.post(
+                        self._provider_url(provider, context.base_url),
+                        headers=headers,
+                        json={
+                            "model": context.model or "llama3.1",
+                            "stream": False,
+                            "format": "json",
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                        },
+                    )
+                    response.raise_for_status()
+                    return response
+
+                response = await self._call_with_retry(call_ollama)
                 response.raise_for_status()
                 payload = response.json()
-                content = payload["message"]["content"]
-                return self._extract_json(content)
+                return payload["message"]["content"]
 
         raise ValueError(f"Unsupported provider: {provider}")
-
-    @staticmethod
-    def _should_use_fallback(context: ProviderContext) -> bool:
-        if context.normalized_provider in {"mock", "local", "heuristic"}:
-            return True
-        if context.normalized_provider == "ollama":
-            return False
-        return not bool(context.api_key)
 
     def _provider_url(self, provider: str, base_url: str | None) -> str:
         if provider == "openai":
@@ -215,58 +450,44 @@ class LLMClient:
         raise ValueError(f"Unsupported provider: {provider}")
 
     @staticmethod
-    def _extract_json(content: Any) -> dict[str, Any]:
-        if isinstance(content, dict):
-            return content
-        if isinstance(content, list):
-            content = "".join(str(item) for item in content)
-        if not isinstance(content, str):
-            raise ValueError("LLM response was not text.")
-        try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            match = re.search(r"\{.*\}", content, re.DOTALL)
-            if not match:
-                raise
-            return json.loads(match.group(0))
+    def _should_use_fallback(context: ProviderContext) -> bool:
+        if context.normalized_provider in {"mock", "local", "heuristic"}:
+            return True
+        if context.normalized_provider == "ollama":
+            return False
+        return not bool(context.api_key)
 
-    @staticmethod
-    def _coerce_direction(value: Any) -> ClaimDirection | None:
-        if value is None:
-            return None
-        normalized = str(value).strip().lower()
-        if normalized in {"positive", "negative", "null"}:
-            return ClaimDirection(normalized)
+    def _finalize_claim(self, claim: PaperClaim) -> PaperClaim:
+        if not claim.found or not claim.claim:
+            claim.discarded = True
+            claim.skip_reason = claim.skip_reason or "no_empirical_finding"
+            claim.claim = None
+            claim.quality = 0.0
+            return claim
+
+        normalized_claim = re.sub(r"\s+", " ", claim.claim.strip())
+        claim.claim = normalized_claim
+        reason = self._claim_validation_reason(normalized_claim, claim.confidence)
+        if reason is not None:
+            claim.found = False
+            claim.discarded = True
+            claim.skip_reason = reason
+            claim.claim = None
+            claim.quality = 0.0
+            return claim
+
+        claim.quality = max(claim.confidence, 0.5)
+        return claim
+
+    def _claim_validation_reason(self, claim_text: str, confidence: float) -> str | None:
+        if len(claim_text.split()) < 12:
+            return "claim_too_short"
+        if confidence < 0.5:
+            return "low_confidence"
+        lowered = claim_text.lower()
+        if any(pattern in lowered for pattern in HEDGING_PATTERNS):
+            return "hedging_only"
         return None
-
-    @staticmethod
-    def _coerce_type(value: Any) -> ContradictionType | None:
-        if value is None:
-            return None
-        normalized = str(value).strip().lower()
-        if normalized in {"direct", "conditional", "methodological", "null"}:
-            return ContradictionType(normalized)
-        return None
-
-    @staticmethod
-    def _bounded_float(value: Any, default: float) -> float:
-        try:
-            candidate = float(value)
-        except (TypeError, ValueError):
-            candidate = default
-        return max(0.0, min(1.0, candidate))
-
-    @staticmethod
-    def _coerce_bool(value: Any, default: bool) -> bool:
-        if isinstance(value, bool):
-            return value
-        if isinstance(value, str):
-            normalized = value.strip().lower()
-            if normalized in {"true", "1", "yes"}:
-                return True
-            if normalized in {"false", "0", "no"}:
-                return False
-        return default
 
     def _heuristic_claim(self, paper: Paper, context: ProviderContext) -> PaperClaim:
         abstract = re.sub(r"\s+", " ", (paper.abstract or "").strip())
@@ -286,26 +507,28 @@ class LLMClient:
                     "improve",
                     "reduc",
                     "did not",
+                    "no effect",
                 ]
             )
         ]
         chosen = prioritized[0] if prioritized else (sentences[-1] if sentences else paper.title)
+        population = self._infer_population(paper)
+        outcome = self._infer_outcome(paper, chosen)
         direction = self._detect_direction(chosen)
-        abstract_word_count = len(abstract.split())
-        quality = 0.25
-        if abstract_word_count >= 40:
-            quality = 0.65
-        if abstract_word_count >= 120:
-            quality = 0.85
-        confidence = 0.55 if chosen != paper.title else 0.35
+        magnitude = self._detect_magnitude(chosen)
+        confidence = 0.72 if chosen != paper.title and len(chosen.split()) >= 12 else 0.45
         return PaperClaim(
             paper_id=paper.id,
             provider=context.normalized_provider,
             model=context.model,
+            found=True,
             claim=chosen,
             direction=direction,
+            magnitude=magnitude,
+            population=population,
+            outcome=outcome,
             confidence=confidence,
-            quality=quality,
+            quality=confidence,
             rationale="Heuristic extraction from the abstract.",
             raw={"mode": "heuristic"},
         )
@@ -318,63 +541,96 @@ class LLMClient:
         paper_b: Paper,
         context: ProviderContext,
     ) -> ContradictionPair:
-        tokens_a = {token for token in normalize_text(claim_a.claim).split() if len(token) > 2}
-        tokens_b = {token for token in normalize_text(claim_b.claim).split() if len(token) > 2}
-        overlap = len(tokens_a & tokens_b)
-        denominator = max(1, len(tokens_a | tokens_b))
-        jaccard = overlap / denominator
-
-        direction_conflict = (
-            claim_a.direction is not None
-            and claim_b.direction is not None
-            and claim_a.direction != claim_b.direction
-            and ClaimDirection.null not in {claim_a.direction, claim_b.direction}
-        )
-        one_null = ClaimDirection.null in {claim_a.direction, claim_b.direction}
-        type_value: ContradictionType | None = None
-        score = 0.15
-        explanation = "Claims appear broadly consistent."
+        outcome_similarity = jaccard_similarity(claim_a.outcome, claim_b.outcome)
+        direction_conflict = claim_a.direction != claim_b.direction and ClaimDirection.null not in {
+            claim_a.direction,
+            claim_b.direction,
+        }
+        null_involved = ClaimDirection.null in {claim_a.direction, claim_b.direction}
+        raw_score = 0.15
+        contradiction_type: ContradictionType | None = ContradictionType.null
+        explanation = "Findings are compatible or address different measurements."
         is_contradiction = False
+        could_both_be_true = True
+        key_difference = "different context"
 
-        if direction_conflict and jaccard >= 0.15:
-            score = min(1.0, 0.65 + (jaccard * 0.3))
-            type_value = ContradictionType.direct
-            explanation = "Claims use overlapping topic language but point in opposite directions."
+        if direction_conflict and outcome_similarity >= 0.2:
+            raw_score = 0.82
+            contradiction_type = ContradictionType.direct
+            explanation = "The findings target similar outcomes but point in opposite directions."
             is_contradiction = True
-        elif one_null and jaccard >= 0.2:
-            score = 0.55
-            type_value = ContradictionType.conditional
-            explanation = "One claim is directional while the other is null or inconclusive."
-        elif jaccard < 0.12:
-            score = 0.1
-            explanation = "Claims do not share enough lexical overlap to count as a contradiction."
-        else:
-            score = 0.32
-            type_value = ContradictionType.methodological
-            explanation = "Claims are related but do not clearly reverse each other."
+            could_both_be_true = False
+            key_difference = "opposite effect direction"
+        elif null_involved and outcome_similarity >= 0.2:
+            raw_score = 0.58
+            contradiction_type = ContradictionType.conditional
+            explanation = "One study reports a directional effect while the other reports a null finding."
+            key_difference = "null versus directional"
+        elif outcome_similarity >= 0.2:
+            raw_score = 0.3
+            contradiction_type = ContradictionType.methodological
+            explanation = "The findings are related but do not cleanly reverse one another."
+            key_difference = "method variation"
 
         return ContradictionPair(
             paper_a_id=paper_a.id,
             paper_b_id=paper_b.id,
+            mode=ContradictionMode.corpus_vs_corpus,
             provider=context.normalized_provider,
             model=context.model,
-            score=score,
-            type=type_value,
+            raw_score=raw_score,
+            score=raw_score,
+            type=contradiction_type,
             explanation=explanation,
             is_contradiction=is_contradiction,
-            raw={"mode": "heuristic", "jaccard": round(jaccard, 4)},
+            could_both_be_true=could_both_be_true,
+            key_difference=key_difference,
+            paper_a_claim=claim_a.claim,
+            paper_b_claim=claim_b.claim,
+            raw={"mode": "heuristic"},
         )
+
+    def _heuristic_input_claims(self, best_section: str) -> list[InputClaim]:
+        sentences = [
+            re.sub(r"\s+", " ", sentence.strip())
+            for sentence in re.split(r"(?<=[.!?])\s+", best_section)
+            if len(sentence.strip().split()) >= 10
+        ]
+        claims: list[InputClaim] = []
+        seen_queries: set[str] = set()
+        for sentence in sentences:
+            direction = self._detect_direction(sentence)
+            query_tokens = list(tokenize_text(sentence, drop_stop_words=True, min_length=3))[:6]
+            search_query = " ".join(query_tokens[:6]).strip()
+            if not search_query or search_query in seen_queries:
+                continue
+            seen_queries.add(search_query)
+            claims.append(
+                InputClaim(
+                    claim=sentence,
+                    direction=direction,
+                    search_query=search_query,
+                    population=None,
+                    outcome=" ".join(query_tokens[:4]) or None,
+                )
+            )
+            if len(claims) == 5:
+                break
+        return claims
 
     @staticmethod
     def _detect_direction(text: str) -> ClaimDirection:
         lowered = text.lower()
         negative_markers = [
             "no significant",
+            "no benefit",
+            "no measurable",
             "did not",
             "not associated",
             "without effect",
             "failed to",
             "ineffective",
+            "no effect",
         ]
         positive_markers = [
             "improv",
@@ -392,3 +648,46 @@ class LLMClient:
         if any(marker in lowered for marker in positive_markers):
             return ClaimDirection.positive
         return ClaimDirection.null
+
+    @staticmethod
+    def _detect_magnitude(text: str) -> ClaimMagnitude:
+        lowered = text.lower()
+        if any(marker in lowered for marker in ["strong", "marked", "substantial", "dramatic"]):
+            return ClaimMagnitude.strong
+        if any(marker in lowered for marker in ["moderate", "significant", "meaningful"]):
+            return ClaimMagnitude.moderate
+        if any(marker in lowered for marker in ["small", "slight", "weak"]):
+            return ClaimMagnitude.weak
+        return ClaimMagnitude.null
+
+    @staticmethod
+    def _infer_population(paper: Paper) -> str | None:
+        source = " ".join([paper.title, paper.abstract or ""]).lower()
+        if "mouse" in source or "mice" in source or "rat" in source or "animal" in source:
+            return "animal"
+        if "in vitro" in source or "cell line" in source:
+            return "in vitro"
+        if "children" in source or "adolescent" in source or "pediatric" in source:
+            return "pediatric"
+        if "elderly" in source or "older adults" in source:
+            return "elderly"
+        if "healthy" in source:
+            return "healthy"
+        if "patients" in source or "disease" in source:
+            return "patient"
+        if "adult" in source or "human" in source or "participants" in source:
+            return "human"
+        return None
+
+    @staticmethod
+    def _infer_outcome(paper: Paper, sentence: str) -> str | None:
+        keyword_candidates = [paper.outcome, *paper.keywords, *paper.mesh_terms]
+        for candidate in keyword_candidates:
+            if candidate:
+                tokens = list(tokenize_text(candidate, drop_stop_words=True))
+                if tokens:
+                    return " ".join(tokens[:4])
+        tokens = [token for token in tokenize_text(sentence, drop_stop_words=True) if token not in tokenize_text(paper.title, drop_stop_words=True)]
+        if tokens:
+            return " ".join(list(tokens)[:4])
+        return None

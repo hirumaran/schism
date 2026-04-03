@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
 from pydantic import BaseModel, Field, model_validator
 
+from .contradiction import ContradictionMode, ContradictionPair, ContradictionType
 from .paper import Paper
-from .report import AnalysisReport
+from .report import AnalysisJob, AnalysisReport, JobStatus
 
 
 def default_sources() -> list[str]:
@@ -21,7 +23,11 @@ class SearchRequest(BaseModel):
 class SearchResponse(BaseModel):
     search_run_id: str
     query: str
+    total: int
+    sources_searched: list[str]
     papers: list[Paper]
+    dedup_removed: int = 0
+    filter_removed: int = 0
     warnings: list[str] = Field(default_factory=list)
 
 
@@ -42,10 +48,57 @@ class AnalyzeRequest(BaseModel):
         return self
 
 
+class AnalyzePaperTextRequest(BaseModel):
+    text: str = Field(min_length=100)
+    title: str | None = None
+    max_results: int = Field(default=50, ge=1, le=200)
+    sources: list[str] = Field(default_factory=lambda: ["arxiv", "semantic_scholar"])
+
+
 class ExportFormat(str, Enum):
     json = "json"
     csv = "csv"
 
 
+class JobStatsResponse(BaseModel):
+    job_id: str
+    query: str
+    status: str
+    paper_count: int
+    extracted_claim_count: int
+    skipped_claim_count: int
+    cluster_count: int
+    filtered_pair_count: int
+    scored_pair_count: int
+    contradiction_count: int
+    cache_hit_rate: float
+    duration_ms: int | None
+    cost_estimate: dict[str, int]
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 class AnalyzeResponse(AnalysisReport):
+    pass
+
+
+class AnalyzeAcceptedResponse(BaseModel):
+    job_id: str
+    status: JobStatus
+
+
+class JobResultsResponse(BaseModel):
+    job_id: str
+    query: str
+    total: int
+    results: list[ContradictionPair]
+
+
+class JobResultsFilter(BaseModel):
+    type: ContradictionType | None = None
+    mode: ContradictionMode | None = None
+    limit: int = Field(default=50, ge=1, le=500)
+    offset: int = Field(default=0, ge=0)
+
+
+class JobLookupResponse(AnalysisJob):
     pass
