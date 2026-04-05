@@ -7,18 +7,17 @@ import { validateKey, testOllamaConnection } from '@/lib/api'
 import type { Provider, EmbeddingProvider } from '@/lib/types'
 
 const ANTHROPIC_MODELS = [
-  { value: 'claude-sonnet-4-6', label: 'claude-sonnet-4-6', desc: 'Balanced speed and quality' },
-  { value: 'claude-opus-4-6', label: 'claude-opus-4-6', desc: 'Best for complex scientific reasoning' },
-  { value: 'claude-haiku-4-5-20251001', label: 'claude-haiku-4-5-20251001', desc: 'Fast, good for large paper sets' },
+  { value: 'claude-3-5-sonnet-latest', label: 'claude-3-5-sonnet-latest', desc: 'Backend default, balanced quality' },
+  { value: 'claude-3-5-haiku-latest', label: 'claude-3-5-haiku-latest', desc: 'Fast and cheaper for larger jobs' },
 ]
 
 const OPENAI_MODELS = [
-  { value: 'gpt-4o-mini', label: 'gpt-4o-mini', desc: 'Best value, recommended' },
-  { value: 'gpt-4o', label: 'gpt-4o', desc: 'Most capable' },
-  { value: 'gpt-4-turbo', label: 'gpt-4-turbo', desc: 'Fast, capable' },
+  { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini', desc: 'Backend default, best value' },
+  { value: 'gpt-4.1', label: 'gpt-4.1', desc: 'Higher quality reasoning' },
+  { value: 'gpt-4o-mini', label: 'gpt-4o-mini', desc: 'Alternative low-cost option' },
 ]
 
-const OLLAMA_CHIPS = ['llama3', 'mistral', 'mixtral', 'phi3', 'gemma']
+const OLLAMA_CHIPS = ['llama3.1', 'mistral', 'mixtral', 'phi3', 'gemma']
 
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, addToast } = useStore()
@@ -176,16 +175,16 @@ export function SettingsModal() {
                   disabled={validating || !localSettings.apiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  {validating ? 'Validating...' : 'Validate key'}
+                  {validating ? 'Checking...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
-                  <p className="text-sm text-green-600">Key is valid</p>
+                  <p className="text-sm text-green-600">Backend is reachable</p>
                 )}
                 {validationResult === 'invalid' && (
-                  <p className="text-sm text-red-600">Invalid key</p>
+                  <p className="text-sm text-red-600">Backend check failed</p>
                 )}
                 {validationResult === 'error' && (
-                  <p className="text-sm text-red-600">Could not reach backend</p>
+                  <p className="text-sm text-red-600">Could not reach the Schism backend</p>
                 )}
               </div>
             </>
@@ -241,16 +240,16 @@ export function SettingsModal() {
                   disabled={validating || !localSettings.apiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  {validating ? 'Validating...' : 'Validate key'}
+                  {validating ? 'Checking...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
-                  <p className="text-sm text-green-600">Key is valid</p>
+                  <p className="text-sm text-green-600">Backend is reachable</p>
                 )}
                 {validationResult === 'invalid' && (
-                  <p className="text-sm text-red-600">Invalid key</p>
+                  <p className="text-sm text-red-600">Backend check failed</p>
                 )}
                 {validationResult === 'error' && (
-                  <p className="text-sm text-red-600">Could not reach backend</p>
+                  <p className="text-sm text-red-600">Could not reach the Schism backend</p>
                 )}
               </div>
             </>
@@ -281,7 +280,7 @@ export function SettingsModal() {
                   <label className="block text-sm font-medium mb-1">Model</label>
                   <input
                     type="text"
-                    placeholder="llama3"
+                    placeholder="llama3.1"
                     value={localSettings.ollamaModel}
                     onChange={(e) =>
                       setLocalSettings((s) => ({ ...s, ollamaModel: e.target.value }))
@@ -289,7 +288,7 @@ export function SettingsModal() {
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Must be pulled in Ollama first: ollama pull llama3
+                    Must be pulled in Ollama first: ollama pull llama3.1
                   </p>
                   <div className="flex flex-wrap gap-2 mt-2">
                     {OLLAMA_CHIPS.map((chip) => (

@@ -42,6 +42,7 @@ export function ContradictionCard({ pair, isHighlighted, id }: ContradictionCard
       semantic_scholar: 'Semantic Scholar',
       pubmed: 'PubMed',
       openalex: 'OpenAlex',
+      user_input: 'Your paper',
     }
     return labels[source] || source
   }
@@ -54,7 +55,7 @@ export function ContradictionCard({ pair, isHighlighted, id }: ContradictionCard
   }
 
   const handleCopy = () => {
-    const text = `Paper A: ${pair.paper_a.title}\nClaim: ${pair.paper_a.claim || 'N/A'}\n\nPaper B: ${pair.paper_b.title}\nClaim: ${pair.paper_b.claim || 'N/A'}\n\nExplanation: ${pair.explanation}`
+    const text = `Paper A: ${pair.paper_a.title}\nClaim: ${pair.paper_a_claim || 'N/A'}\n\nPaper B: ${pair.paper_b.title}\nClaim: ${pair.paper_b_claim || 'N/A'}\n\nExplanation: ${pair.explanation}`
     navigator.clipboard.writeText(text)
     addToast('Copied to clipboard', 'success')
   }
@@ -106,9 +107,9 @@ export function ContradictionCard({ pair, isHighlighted, id }: ContradictionCard
         <p className="text-xs text-muted-foreground mt-0.5">
           {formatAuthors(pair.paper_a.authors)} · {pair.paper_a.year || 'N/A'}
         </p>
-        {pair.paper_a.claim && (
+        {pair.paper_a_claim && (
           <p className="font-serif text-sm text-muted-foreground italic mt-2 pl-3 border-l-2 border-border">
-            {pair.paper_a.claim}
+            {pair.paper_a_claim}
           </p>
         )}
       </div>
@@ -140,9 +141,9 @@ export function ContradictionCard({ pair, isHighlighted, id }: ContradictionCard
         <p className="text-xs text-muted-foreground mt-0.5">
           {formatAuthors(pair.paper_b.authors)} · {pair.paper_b.year || 'N/A'}
         </p>
-        {pair.paper_b.claim && (
+        {pair.paper_b_claim && (
           <p className="font-serif text-sm text-muted-foreground italic mt-2 pl-3 border-l-2 border-border">
-            {pair.paper_b.claim}
+            {pair.paper_b_claim}
           </p>
         )}
       </div>

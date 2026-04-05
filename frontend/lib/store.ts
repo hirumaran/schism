@@ -29,12 +29,12 @@ interface SchismStore {
 const defaultSettings: Settings = {
   provider: 'mock',
   apiKey: '',
-  model: 'claude-sonnet-4-6',
+  model: 'claude-3-5-sonnet-latest',
   embeddingProvider: 'local',
   baseUrl: 'http://localhost:11434',
-  anthropicModel: 'claude-sonnet-4-6',
-  openaiModel: 'gpt-4o-mini',
-  ollamaModel: 'llama3',
+  anthropicModel: 'claude-3-5-sonnet-latest',
+  openaiModel: 'gpt-4.1-mini',
+  ollamaModel: 'llama3.1',
   cohereKey: '',
 }
 

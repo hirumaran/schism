@@ -20,6 +20,7 @@ export function ClaimsPreview({ jobId, settings, isActive }: ClaimsPreviewProps)
       semantic_scholar: 'S2',
       pubmed: 'PubMed',
       openalex: 'OpenAlex',
+      user_input: 'Your paper',
     }
     return labels[source] || source
   }
@@ -37,19 +38,8 @@ export function ClaimsPreview({ jobId, settings, isActive }: ClaimsPreviewProps)
             </span>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-serif line-clamp-2">
-                {pair.paper_a.claim || pair.paper_a.title}
+                {pair.paper_a_claim || pair.paper_a.title}
               </p>
-              {pair.paper_a.claim_direction && (
-                <span
-                  className={`inline-block mt-1 px-1.5 py-0.5 text-[10px] rounded ${
-                    pair.paper_a.claim_direction === 'positive'
-                      ? 'bg-green-100 text-green-700'
-                      : 'bg-red-100 text-red-700'
-                  }`}
-                >
-                  {pair.paper_a.claim_direction}
-                </span>
-              )}
             </div>
           </div>
         ))}

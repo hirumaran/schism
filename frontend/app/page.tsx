@@ -92,7 +92,7 @@ export default function InputPage() {
           addToast(`Analysis failed: ${err.message}`, 'error')
         }
       } else {
-        addToast('Cannot reach Schism backend. Is it running at localhost:8000?', 'error')
+        addToast('Cannot reach the Schism backend. Check NEXT_PUBLIC_API_URL and that the API server is running.', 'error')
       }
     } finally {
       setLoading(false)

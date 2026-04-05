@@ -37,6 +37,7 @@ export function ClaimsSidebar({ results, activeClaimId, onClaimClick }: ClaimsSi
       semantic_scholar: 'Semantic Scholar',
       pubmed: 'PubMed',
       openalex: 'OpenAlex',
+      user_input: 'Your paper',
     }
     return labels[source] || source
   }
