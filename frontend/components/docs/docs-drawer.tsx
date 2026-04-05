@@ -245,7 +245,7 @@ X-Model:    model-name (optional, uses default)`}
 
       <div className="space-y-2">
         {routes.map((route) => (
-          <div key={route.path} className="border border-border rounded-md">
+          <div key={`${route.method} ${route.path}`} className="border border-border rounded-md">
             <button
               onClick={() => toggleRoute(route.path)}
               className="w-full flex items-center justify-between p-3 text-left hover:bg-accent/50"
