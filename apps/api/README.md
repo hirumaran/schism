@@ -9,7 +9,8 @@ cd apps/api
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[ml,dev]"
-uvicorn app.main:app --reload
+cp .env.example .env
+python -m app.main
 ```
 
 ## Core endpoints
@@ -31,4 +32,3 @@ X-Model: claude-3-5-sonnet-latest
 ```
 
 `ollama` can be used without `X-Api-Key` when the backend can reach the local Ollama endpoint.
-

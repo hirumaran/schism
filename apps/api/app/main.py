@@ -33,10 +33,19 @@ app = FastAPI(
 )
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.allowed_origins if settings.allowed_origins else ["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["*"],
+    allow_origins=settings.allowed_origins,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=[
+        "Content-Type",
+        "Authorization",
+        "X-Provider",
+        "X-Api-Key",
+        "X-Model",
+        "X-Base-Url",
+        "X-Embedding-Provider",
+    ],
+    expose_headers=["X-Cache"],
 )
 
 app.include_router(health.router, prefix=settings.api_prefix)
@@ -53,3 +62,13 @@ async def root() -> dict[str, str]:
         "api_prefix": settings.api_prefix,
         "docs": "/docs",
     }
+
+
+def main() -> None:
+    import uvicorn
+
+    uvicorn.run("app.main:app", host="0.0.0.0", port=settings.port)
+
+
+if __name__ == "__main__":
+    main()

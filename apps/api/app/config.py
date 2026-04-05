@@ -6,6 +6,21 @@ from functools import lru_cache
 from pathlib import Path
 
 
+def _load_env_file() -> None:
+    env_path = Path(__file__).resolve().parents[1] / ".env"
+    if not env_path.exists():
+        return
+    for line in env_path.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        key, value = stripped.split("=", 1)
+        os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
+
+
+_load_env_file()
+
+
 def _bool_env(name: str, default: bool) -> bool:
     raw = os.getenv(name)
     if raw is None:
@@ -18,15 +33,35 @@ def _csv_env(name: str, default: str) -> list[str]:
     return [item.strip() for item in raw.split(",") if item.strip()]
 
 
+def _default_allowed_origins() -> list[str]:
+    explicit = os.getenv("SCHISM_ALLOWED_ORIGINS")
+    if explicit:
+        return _csv_env("SCHISM_ALLOWED_ORIGINS", "")
+
+    configured_frontend = os.getenv("FRONTEND_URL", "http://localhost:3000").strip()
+    origins = [
+        configured_frontend,
+        "http://localhost:3000",
+        "http://127.0.0.1:3000",
+    ]
+    deduped: list[str] = []
+    for origin in origins:
+        if origin and origin not in deduped:
+            deduped.append(origin)
+    return deduped
+
+
 @dataclass(slots=True)
 class Settings:
     app_name: str = field(default_factory=lambda: os.getenv("SCHISM_APP_NAME", "schism"))
+    port: int = field(default_factory=lambda: int(os.getenv("PORT", os.getenv("SCHISM_PORT", "8000"))))
     api_prefix: str = field(default_factory=lambda: os.getenv("SCHISM_API_PREFIX", "/api"))
     database_url: str = field(default_factory=lambda: os.getenv("SCHISM_DATABASE_URL", "sqlite:///./data/schism.db"))
     qdrant_url: str = field(default_factory=lambda: os.getenv("SCHISM_QDRANT_URL", "http://localhost:6333"))
     qdrant_collection: str = field(default_factory=lambda: os.getenv("SCHISM_QDRANT_COLLECTION", "schism_claims"))
     enable_qdrant: bool = field(default_factory=lambda: _bool_env("SCHISM_ENABLE_QDRANT", False))
-    allowed_origins: list[str] = field(default_factory=lambda: _csv_env("SCHISM_ALLOWED_ORIGINS", "*"))
+    frontend_url: str = field(default_factory=lambda: os.getenv("FRONTEND_URL", "http://localhost:3000"))
+    allowed_origins: list[str] = field(default_factory=_default_allowed_origins)
     default_max_results: int = field(default_factory=lambda: int(os.getenv("SCHISM_DEFAULT_MAX_RESULTS", "25")))
     contradiction_threshold: float = field(default_factory=lambda: float(os.getenv("SCHISM_CONTRADICTION_THRESHOLD", "0.6")))
     min_keyword_overlap: int = field(default_factory=lambda: int(os.getenv("SCHISM_MIN_KEYWORD_OVERLAP", "1")))
