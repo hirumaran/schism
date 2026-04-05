@@ -5,8 +5,9 @@ __pycache__/
 .coverage
 .env
 .env.*
+!.env.example
+!**/.env.example
 data/
 .qdrant/
 node_modules/
 .next/
-

@@ -225,14 +225,14 @@ sources: arxiv,semantic_scholar
       method: 'GET',
       path: '/api/health',
       desc: 'Check backend status',
-      response: `{ "status": "ok", "version": "0.1.0" }`,
+      response: `{ "status": "ok", "app": "schism", ... }`,
     },
   ]
 
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        The Schism backend runs at localhost:8000 by default. All endpoints require provider headers for LLM calls.
+        The frontend reads its API base from NEXT_PUBLIC_API_URL. In local development this is usually proxied to the backend.
       </p>
       <div className="p-3 bg-foreground/5 rounded-md font-mono text-xs">
         <p className="text-muted-foreground mb-1">Headers required for all /analyze endpoints:</p>
@@ -319,7 +319,7 @@ function SetupTab() {
     {
       key: 'ollama',
       q: 'Ollama not connecting',
-      a: 'Make sure ollama serve is running. Check that the base URL in Settings matches (default: localhost:11434). The model must be pulled first: ollama pull llama3',
+      a: 'Make sure ollama serve is running. Check that the base URL in Settings matches (default: localhost:11434). The model must be pulled first: ollama pull llama3.1',
     },
     {
       key: 'pdf',
@@ -336,6 +336,7 @@ function SetupTab() {
 {`git clone https://github.com/your-org/schism
 cd schism
 cp apps/api/.env.example apps/api/.env
+cp frontend/.env.example frontend/.env.local
 docker compose up`}
         </pre>
       </section>
@@ -345,7 +346,11 @@ docker compose up`}
         <pre className="p-3 bg-foreground/5 rounded-md text-xs font-mono overflow-x-auto">
 {`cd apps/api
 pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000`}
+python -m app.main
+
+cd ../../frontend
+npm install
+npm run dev`}
         </pre>
       </section>
 
