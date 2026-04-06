@@ -144,6 +144,8 @@ class ProviderContext:
     api_key: str | None = None
     model: str | None = None
     base_url: str | None = None
+    embedding_provider: str | None = None
+    embedding_api_key: str | None = None
 
     @property
     def normalized_provider(self) -> str:

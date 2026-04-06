@@ -32,6 +32,10 @@ class SQLiteRepository:
         connection = sqlite3.connect(self.db_path, check_same_thread=False)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA journal_mode=WAL;")
+        connection.execute("PRAGMA synchronous=NORMAL;")
+        connection.execute("PRAGMA cache_size=-64000;")
+        connection.execute("PRAGMA temp_store=MEMORY;")
         return connection
 
     def _initialize(self) -> None:

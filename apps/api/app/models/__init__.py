@@ -10,7 +10,7 @@ from .api import (
     SearchRequest,
     SearchResponse,
 )
-from .claim import ClaimDirection, ClaimMagnitude, InputClaim, PaperClaim
+from .claim import ClaimDirection, ClaimMagnitude, ExtractedSections, InputClaim, PaperClaim, ParsedInput
 from .contradiction import ContradictionMode, ContradictionPair, ContradictionType, build_pair_key, canonicalize_pair
 from .paper import (
     Paper,
@@ -38,6 +38,7 @@ __all__ = [
     "ContradictionMode",
     "ContradictionPair",
     "ContradictionType",
+    "ExtractedSections",
     "ExportFormat",
     "InputPaperMetadata",
     "JobLookupResponse",
@@ -46,6 +47,7 @@ __all__ = [
     "JobStatsResponse",
     "JobStatus",
     "Paper",
+    "ParsedInput",
     "PaperClaim",
     "SearchRequest",
     "SearchResponse",

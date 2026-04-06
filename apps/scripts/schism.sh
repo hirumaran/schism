@@ -18,4 +18,6 @@ echo "Press Ctrl+C to stop both"
 
 # Kill both on Ctrl+C
 trap "kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; echo 'Schism stopped.'" EXIT
+
+# Wait for both processes
 wait

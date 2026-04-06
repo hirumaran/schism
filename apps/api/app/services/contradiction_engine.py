@@ -106,7 +106,7 @@ class ContradictionEngine:
 
             await self._update_job(analysis_job, progress=35, status=JobStatus.embedding)
             async with StageTimer("embedding", logger):
-                embeddings = await self._embed_papers_with_cache(papers)
+                embeddings = await self._embed_papers_with_cache(papers, context)
             await self._update_job(analysis_job, progress=50)
 
             await self._check_job_active(analysis_job.id)
@@ -362,7 +362,7 @@ class ContradictionEngine:
 
             await self._update_job(analysis_job, progress=35, status=JobStatus.embedding)
             async with StageTimer("embedding", logger):
-                embeddings = await self._embed_papers_with_cache(papers)
+                embeddings = await self._embed_papers_with_cache(papers, context)
             await self._update_job(analysis_job, progress=50)
 
             await self._check_job_active(analysis_job.id)
@@ -560,7 +560,7 @@ class ContradictionEngine:
         self.repository.save_search_run(search_run, ranked)
         return ranked, search_run, result
 
-    async def _embed_papers_with_cache(self, papers: list[Paper]) -> list[list[float]]:
+    async def _embed_papers_with_cache(self, papers: list[Paper], context: ProviderContext | None = None) -> list[list[float]]:
         texts_to_embed: list[str] = []
         indexes_to_embed: list[int] = []
         embeddings: list[list[float] | None] = [None] * len(papers)
@@ -574,7 +574,9 @@ class ContradictionEngine:
             texts_to_embed.append(f"{paper.title}. {paper.abstract or ''}".strip())
 
         if texts_to_embed:
-            new_vectors = await self.embedding_service.embed_texts(texts_to_embed)
+            provider = context.embedding_provider if context else "local"
+            api_key = context.embedding_api_key if context else None
+            new_vectors = await self.embedding_service.embed_texts(texts_to_embed, provider=provider, api_key=api_key)
             points = []
             for index, vector in zip(indexes_to_embed, new_vectors, strict=False):
                 paper = papers[index]

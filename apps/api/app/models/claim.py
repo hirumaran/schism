@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ClaimDirection(str, Enum):
@@ -47,3 +47,23 @@ class InputClaim(BaseModel):
     search_query: str
     population: str | None = None
     outcome: str | None = None
+
+
+class ParsedInput(BaseModel):
+    text: str
+    title: str | None = None
+    filename: str | None = None
+    char_count: int = 0
+
+    @model_validator(mode='after')
+    def set_char_count(self) -> 'ParsedInput':
+        self.char_count = len(self.text)
+        return self
+
+
+class ExtractedSections(BaseModel):
+    abstract: str | None = None
+    conclusion: str | None = None
+    full_text: str
+    best_section: str
+    section_used: str  # "abstract" | "conclusion" | "full_text"

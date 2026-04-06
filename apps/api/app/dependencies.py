@@ -88,4 +88,6 @@ def get_provider_context(request: Request) -> ProviderContext:
         api_key=request.headers.get("X-Api-Key"),
         model=request.headers.get("X-Model"),
         base_url=request.headers.get("X-Base-Url"),
+        embedding_provider=request.headers.get("X-Embedding-Provider"),
+        embedding_api_key=request.headers.get("X-Embedding-Api-Key"),
     )
