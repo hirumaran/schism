@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any
 
@@ -30,7 +31,7 @@ class VectorStore:
             "last_error": self._last_error,
         }
 
-    def get_vector(self, embedding_id: str | None) -> list[float] | None:
+    async def get_vector(self, embedding_id: str | None) -> list[float] | None:
         if not self.settings.enable_qdrant or not embedding_id:
             return None
 
@@ -38,8 +39,11 @@ class VectorStore:
             client = self._get_client()
             if client is None:
                 return None
-            self._ensure_collection(client, 384)
-            points = client.retrieve(collection_name=self.settings.qdrant_collection, ids=[embedding_id], with_vectors=True)
+            await self._ensure_collection(client, 384)
+            loop = asyncio.get_event_loop()
+            points = await loop.run_in_executor(
+                None, lambda: client.retrieve(collection_name=self.settings.qdrant_collection, ids=[embedding_id], with_vectors=True)
+            )
             if not points:
                 return None
             vector = points[0].vector
@@ -50,7 +54,7 @@ class VectorStore:
             logger.debug("vector_fetch_failed", extra={"embedding_id": embedding_id, "error": str(exc)})
         return None
 
-    def upsert_embeddings(self, points: list[dict[str, Any]], dimensions: int) -> None:
+    async def upsert_embeddings(self, points: list[dict[str, Any]], dimensions: int) -> None:
         if not self.settings.enable_qdrant or not points:
             return
 
@@ -61,7 +65,7 @@ class VectorStore:
 
             from qdrant_client.http import models as qmodels
 
-            self._ensure_collection(client, dimensions)
+            await self._ensure_collection(client, dimensions)
             payload = [
                 qmodels.PointStruct(
                     id=point["id"],
@@ -70,7 +74,10 @@ class VectorStore:
                 )
                 for point in points
             ]
-            client.upsert(collection_name=self.settings.qdrant_collection, points=payload)
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None, lambda: client.upsert(collection_name=self.settings.qdrant_collection, points=payload)
+            )
             self._last_error = None
         except Exception as exc:
             self._last_error = str(exc)
@@ -89,17 +96,21 @@ class VectorStore:
             self._client = None
         return self._client
 
-    def _ensure_collection(self, client: Any, dimensions: int) -> None:
+    async def _ensure_collection(self, client: Any, dimensions: int) -> None:
         if self._collection_ready:
             return
 
         from qdrant_client.http import models as qmodels
 
-        collections = client.get_collections().collections
-        names = {collection.name for collection in collections}
+        loop = asyncio.get_event_loop()
+        collections = await loop.run_in_executor(None, client.get_collections)
+        names = {collection.name for collection in collections.collections}
         if self.settings.qdrant_collection not in names:
-            client.create_collection(
-                collection_name=self.settings.qdrant_collection,
-                vectors_config=qmodels.VectorParams(size=dimensions, distance=qmodels.Distance.COSINE),
+            await loop.run_in_executor(
+                None,
+                lambda: client.create_collection(
+                    collection_name=self.settings.qdrant_collection,
+                    vectors_config=qmodels.VectorParams(size=dimensions, distance=qmodels.Distance.COSINE),
+                ),
             )
         self._collection_ready = True

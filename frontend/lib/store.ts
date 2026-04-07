@@ -71,9 +71,13 @@ export const useStore = create<SchismStore>()(
       toasts: [],
       addToast: (message, type) => {
         const id = Math.random().toString(36).slice(2)
-        set((state) => ({
-          toasts: [...state.toasts, { id, message, type }].slice(-3),
-        }))
+        set((state) => {
+          const newToasts = [...state.toasts, { id, message, type }]
+          if (newToasts.length > 3) {
+            newToasts.shift()
+          }
+          return { toasts: newToasts }
+        })
         setTimeout(() => {
           get().removeToast(id)
         }, 4000)

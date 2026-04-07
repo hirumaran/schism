@@ -77,15 +77,14 @@ export function SettingsModal() {
   }
 
   const handleSave = () => {
-    const finalSettings = {
-      ...localSettings,
-      model:
-        localSettings.provider === 'anthropic'
-          ? localSettings.anthropicModel
-          : localSettings.provider === 'openai'
-            ? localSettings.openaiModel
-            : localSettings.ollamaModel,
-    }
+    const finalModel =
+      localSettings.provider === 'anthropic'
+        ? localSettings.anthropicModel
+        : localSettings.provider === 'openai'
+          ? localSettings.openaiModel
+          : localSettings.ollamaModel
+    const finalSettings = { ...localSettings, model: finalModel }
+    setLocalSettings(finalSettings)
     updateSettings(finalSettings)
     addToast('Settings saved', 'success')
     setSettingsOpen(false)

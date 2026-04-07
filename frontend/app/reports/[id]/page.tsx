@@ -56,6 +56,13 @@ export default function ReportsPage() {
     setLoadingMore(false)
   }, [loadingMore, allResults.length, total, reportId, settings, addToast])
 
+  // Filter results client-side
+  const filteredResults = allResults.filter((pair) => {
+    if (typeFilter !== 'all' && pair.type !== typeFilter) return false
+    if (modeFilter !== 'all' && pair.mode !== modeFilter) return false
+    return true
+  })
+
   const handleClaimClick = (paperId: string) => {
     setActiveClaimId(paperId)
     // Find the first card that contains this paper
@@ -72,13 +79,6 @@ export default function ReportsPage() {
     setTypeFilter('all')
     setModeFilter('all')
   }
-
-  // Filter results client-side
-  const filteredResults = allResults.filter((pair) => {
-    if (typeFilter !== 'all' && pair.type !== typeFilter) return false
-    if (modeFilter !== 'all' && pair.mode !== modeFilter) return false
-    return true
-  })
 
   // Check if any results are paper_vs_corpus
   const hasPaperMode = allResults.some((r) => r.mode === 'paper_vs_corpus')
@@ -187,7 +187,7 @@ export default function ReportsPage() {
             <div className="space-y-4 max-w-3xl">
               {filteredResults.map((pair, i) => (
                 <ContradictionCard
-                  key={i}
+                  key={pair.pair_key || `${pair.paper_a.id}-${pair.paper_b.id}`}
                   id={`card-${i}`}
                   pair={pair}
                   isHighlighted={

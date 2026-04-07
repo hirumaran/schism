@@ -566,7 +566,7 @@ class ContradictionEngine:
         embeddings: list[list[float] | None] = [None] * len(papers)
 
         for index, paper in enumerate(papers):
-            vector = self.vector_store.get_vector(paper.embedding_id)
+            vector = await self.vector_store.get_vector(paper.embedding_id)
             if vector is not None:
                 embeddings[index] = vector
                 continue
@@ -593,7 +593,7 @@ class ContradictionEngine:
                     }
                 )
             if new_vectors:
-                self.vector_store.upsert_embeddings(points=points, dimensions=len(new_vectors[0]))
+                await self.vector_store.upsert_embeddings(points=points, dimensions=len(new_vectors[0]))
 
         return [vector or [] for vector in embeddings]
 
@@ -776,6 +776,7 @@ class ContradictionEngine:
         semaphore = asyncio.Semaphore(max(1, self.settings.scoring_concurrency))
         contradictions: list[ContradictionPair] = []
         methodological: list[ContradictionPair] = []
+        best_pairs: dict[str, ContradictionPair] = {}
         filtered_pairs = 0
         llm_scored_pairs = 0
         cached_pairs = 0
@@ -813,7 +814,6 @@ class ContradictionEngine:
                 )
             contradiction.cluster_id = cluster_id
             contradiction = self._apply_year_penalty(contradiction, paper_a, paper_b)
-            self.repository.save_contradiction(contradiction, job_id=job.id)
             return contradiction
 
         tasks = []
@@ -823,6 +823,11 @@ class ContradictionEngine:
                 tasks.append(score_pair(cluster.id, claim_a, claim_b))
 
         for item in [pair for pair in await asyncio.gather(*tasks) if pair is not None]:
+            existing = best_pairs.get(item.pair_key or "")
+            if existing is None or item.score > existing.score:
+                best_pairs[item.pair_key or ""] = item
+
+        for item in best_pairs.values():
             if item.type == ContradictionType.methodological and item.score < request.contradiction_threshold:
                 methodological.append(item)
                 self.repository.save_contradiction(item, job_id=job.id, kind="methodological")

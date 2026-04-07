@@ -15,6 +15,15 @@ Schism takes either a search query or your own research paper and finds publishe
 ## Quick start
 
 ```bash
+bash apps/scripts/schism.sh
+```
+
+Backend: http://localhost:8000  
+Frontend: http://localhost:3000
+
+## Docker Quick start
+
+```bash
 cp apps/api/.env.example apps/api/.env
 docker compose up
 ```
