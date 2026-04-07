@@ -32,25 +32,25 @@ export function SourcePicker({
 
   return (
     <div className="space-y-4 mt-4">
-      <div className="flex flex-wrap gap-2">
-        {SOURCES.map((source) => {
-          const isSelected = selected.includes(source.id)
-          return (
-            <button
-              key={source.id}
-              onClick={() => toggleSource(source.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border transition-colors ${
-                isSelected
-                  ? 'bg-foreground text-background border-foreground'
-                  : 'bg-background text-muted-foreground border-border hover:border-foreground/30'
-              }`}
-            >
-              {isSelected && <Check className="w-3 h-3" />}
-              {source.label}
-            </button>
-          )
-        })}
-      </div>
+       <div className="flex flex-wrap gap-2">
+          {SOURCES.map((source) => {
+            const isSelected = selected.includes(source.id)
+            return (
+              <button
+                key={source.id}
+                onClick={() => toggleSource(source.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border transition-all duration-200 ${
+                  isSelected
+                    ? 'bg-[#2A1D00] dark:bg-[#2A1D00] border-[#B87333] dark:border-[#B87333]/70 text-[#F0A830] dark:text-[#F0A830] shadow-sm'
+                    : 'bg-[#1C1500] dark:bg-[#1C1500] border-[#3D2E00] dark:border-[#3D2E00]/70 text-[#78624A] dark:text-[#78624A] hover:bg-[#221A00] dark:hover:bg-[#221A00] hover:border-[#6B4F1A] dark:hover:border-[#6B4F1A]/70 hover:text-[#A07840] dark:hover:text-[#A07840]'
+                }`}
+              >
+                {isSelected && <Check className="w-3 h-3 text-[#F0A830] dark:text-[#F0A830]" />}
+                {source.label}
+              </button>
+            )
+          })}
+        </div>
 
       <div className="space-y-2">
         <div className="flex items-center justify-between">

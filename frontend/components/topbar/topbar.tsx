@@ -2,44 +2,40 @@
 
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
+import { useTheme } from 'next-themes'
+import { Switch } from '@/components/ui/switch'
+import { Moon, Sun } from 'lucide-react'
 
 export function Topbar() {
-  const { settings, setSettingsOpen, setDocsOpen } = useStore()
+  const { setSettingsOpen, setDocsOpen } = useStore()
+  const { theme, setTheme } = useTheme()
 
-  const getStatusDot = () => {
-    if (settings.provider === 'mock' || settings.provider === 'ollama') {
-      return 'bg-green-500'
-    }
-    if (settings.apiKey) {
-      return 'bg-green-500'
-    }
-    return 'bg-red-500'
+  const toggleTheme = () => {
+    setTheme(theme === 'dark' ? 'light' : 'dark')
   }
 
-  const getProviderLabel = () => {
-    switch (settings.provider) {
-      case 'anthropic':
-        return `Anthropic · ${settings.anthropicModel}`
-      case 'openai':
-        return `OpenAI · ${settings.openaiModel}`
-      case 'ollama':
-        return `Ollama (local) · ${settings.ollamaModel}`
-      case 'mock':
-        return 'mock (no results)'
-    }
+  const getStatusDot = () => {
+    return 'bg-green-500'
   }
 
   return (
     <header className="fixed top-0 left-0 right-0 h-14 bg-background border-b border-border z-50">
       <div className="flex items-center justify-between h-full px-6">
-        <Link href="/" className="flex items-baseline gap-2">
-          <span className="font-serif text-xl font-thin">Schism</span>
-        </Link>
+<Link href="/" className="flex items-baseline gap-2">
+           <span className="font-serif text-xl font-thin">Schism</span>
+         </Link>
 
         <div className="flex items-center gap-4">
-          <span className="text-xs text-muted-foreground">
-            Using: {getProviderLabel()}
-          </span>
+          {/* Theme Toggle */}
+          <div className="flex items-center gap-2">
+            <Sun className="w-4 h-4 text-muted-foreground" />
+            <Switch
+              checked={theme === 'dark'}
+              onCheckedChange={toggleTheme}
+              aria-label="Toggle dark mode"
+            />
+            <Moon className="w-4 h-4 text-muted-foreground" />
+          </div>
 
           <button
             onClick={() => setDocsOpen(true)}

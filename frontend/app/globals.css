@@ -5,32 +5,60 @@
 
 /* Schism design tokens - Academic journal meets minimal SaaS */
 :root {
-  --background: oklch(1 0 0);
-  --foreground: oklch(0.15 0 0);
-  --card: oklch(0.98 0.005 85);
-  --card-foreground: oklch(0.15 0 0);
-  --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.15 0 0);
-  --primary: oklch(0.15 0 0);
-  --primary-foreground: oklch(1 0 0);
-  --secondary: oklch(0.97 0.005 85);
-  --secondary-foreground: oklch(0.15 0 0);
-  --muted: oklch(0.95 0.005 85);
-  --muted-foreground: oklch(0.45 0 0);
-  --accent: oklch(0.97 0.005 85);
-  --accent-foreground: oklch(0.15 0 0);
+  --background: #F9F9F6;
+  --foreground: #1C2331;
+  --card: #FFFFFF;
+  --card-foreground: #1C2331;
+  --popover: #F9F9F6;
+  --popover-foreground: #1C2331;
+  --primary: #0F4C81;
+  --primary-foreground: #FFFFFF;
+  --secondary: #F5F5DC;
+  --secondary-foreground: #1C2331;
+  --muted: #E8E8D0;
+  --muted-foreground: #6B7280;
+  --accent: #E67E22;
+  --accent-foreground: #FFFFFF;
   --destructive: oklch(0.6 0.2 25);
-  --destructive-foreground: oklch(1 0 0);
-  --border: oklch(0.92 0.005 85);
-  --input: oklch(0.92 0.005 85);
-  --ring: oklch(0.15 0 0);
+  --destructive-foreground: #F2F0EF;
+  --border: #D1D5DB;
+  --input: #E5E3DC;
+  --ring: #0F4C81;
   --radius: 0.625rem;
-  
+
   /* Schism semantic colors */
   --schism-red: #E24B4A;
   --schism-amber: #EF9F27;
   --schism-green: #639922;
   --schism-border: #E5E3DC;
+  --scrollbar-thumb: #9A9894;
+  --scrollbar-thumb-hover: #7A7875;
+  --scrollbar-track: #D8D6D1;
+}
+
+.dark {
+  --background: #121619;
+  --foreground: #E2E8F0;
+  --card: #1A1D24;
+  --card-foreground: #E2E8F0;
+  --popover: #121619;
+  --popover-foreground: #E2E8F0;
+  --primary: #0F4C81;
+  --primary-foreground: #FFFFFF;
+  --secondary: #232730;
+  --secondary-foreground: #E2E8F0;
+  --muted: #374151;
+  --muted-foreground: #9CA3AF;
+  --accent: #E67E22;
+  --accent-foreground: #FFFFFF;
+  --destructive: oklch(0.5 0.2 25);
+  --destructive-foreground: #1A1918;
+  --border: #374151;
+  --input: #232730;
+  --ring: #0F4C81;
+  --scrollbar-thumb: #4A4846;
+  --scrollbar-thumb-hover: #5A5755;
+  --scrollbar-track: #1A1D24;
 }
 
 @theme inline {
@@ -75,14 +103,14 @@
     overflow-x: hidden;
     max-width: 100vw;
     scrollbar-width: thin;
-    scrollbar-color: hsl(0, 0%, 85%) hsl(0, 0%, 98%);
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
   body {
     @apply bg-background text-foreground;
     overflow-x: hidden;
     max-width: 100vw;
     scrollbar-width: thin;
-    scrollbar-color: hsl(0, 0%, 85%) hsl(0, 0%, 98%);
+    scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
   }
   html::-webkit-scrollbar,
   body::-webkit-scrollbar {
@@ -90,21 +118,21 @@
   }
   html::-webkit-scrollbar-track,
   body::-webkit-scrollbar-track {
-    background: hsl(0, 0%, 98%);
+    background: var(--scrollbar-track);
   }
   html::-webkit-scrollbar-thumb,
   body::-webkit-scrollbar-thumb {
-    background: hsl(0, 0%, 85%);
+    background: var(--scrollbar-thumb);
     border-radius: 100px;
   }
   html::-webkit-scrollbar-thumb:hover,
   body::-webkit-scrollbar-thumb:hover {
-    background: hsl(0, 0%, 75%);
+    background: var(--scrollbar-thumb-hover);
   }
 }
 
 /* Custom selection color */
 ::selection {
   background: oklch(0.15 0 0);
-  color: oklch(1 0 0);
+  color: #F2F0EF;
 }

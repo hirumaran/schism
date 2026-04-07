@@ -13,6 +13,7 @@ interface SchismStore {
   recentJobs: JobSummary[]
   addRecentJob: (job: JobSummary) => void
   updateRecentJob: (id: string, partial: Partial<JobSummary>) => void
+  removeRecentJob: (id: string) => void
 
   // UI state (not persisted)
   settingsOpen: boolean
@@ -48,18 +49,22 @@ export const useStore = create<SchismStore>()(
           settings: { ...state.settings, ...partial },
         })),
 
-      // Recent jobs
-      recentJobs: [],
-      addRecentJob: (job) =>
-        set((state) => ({
-          recentJobs: [job, ...state.recentJobs.filter((j) => j.id !== job.id)].slice(0, 10),
-        })),
-      updateRecentJob: (id, partial) =>
-        set((state) => ({
-          recentJobs: state.recentJobs.map((j) =>
-            j.id === id ? { ...j, ...partial } : j
-          ),
-        })),
+       // Recent jobs
+       recentJobs: [],
+       addRecentJob: (job) =>
+         set((state) => ({
+           recentJobs: [job, ...state.recentJobs.filter((j) => j.id !== job.id)].slice(0, 10),
+         })),
+       updateRecentJob: (id, partial) =>
+         set((state) => ({
+           recentJobs: state.recentJobs.map((j) =>
+             j.id === id ? { ...j, ...partial } : j
+           ),
+         })),
+       removeRecentJob: (id) =>
+         set((state) => ({
+           recentJobs: state.recentJobs.filter((job) => job.id !== id),
+         })),
 
       // UI state
       settingsOpen: false,
