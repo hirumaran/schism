@@ -41,11 +41,11 @@ export function SourcePicker({
                 onClick={() => toggleSource(source.id)}
                 className={`flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border transition-all duration-200 ${
                   isSelected
-                    ? 'bg-[#2A1D00] dark:bg-[#2A1D00] border-[#B87333] dark:border-[#B87333]/70 text-[#F0A830] dark:text-[#F0A830] shadow-sm'
-                    : 'bg-[#1C1500] dark:bg-[#1C1500] border-[#3D2E00] dark:border-[#3D2E00]/70 text-[#78624A] dark:text-[#78624A] hover:bg-[#221A00] dark:hover:bg-[#221A00] hover:border-[#6B4F1A] dark:hover:border-[#6B4F1A]/70 hover:text-[#A07840] dark:hover:text-[#A07840]'
+                    ? 'bg-[#0C2340] border-[#38BDF8] text-[#CBD5E1] shadow-sm hover:bg-[#0C2340]/90 hover:border-[#38BDF8] dark:bg-[#2A1D00] dark:border-[#B87333] dark:text-[#F0A830] dark:shadow-none dark:hover:bg-[#221A00] dark:hover:border-[#6B4F1A] dark:hover:text-[#A07840]'
+                    : 'bg-[#1E3A5F] border-[#334155] text-[#CBD5E1] hover:bg-[#1E293B] hover:border-[#334155] hover:text-[#64748B] dark:bg-[#1C1500] dark:border-[#3D2E00] dark:text-[#78624A] dark:hover:bg-[#221A00] dark:hover:border-[#6B4F1A] dark:hover:text-[#A07840]'
                 }`}
               >
-                {isSelected && <Check className="w-3 h-3 text-[#F0A830] dark:text-[#F0A830]" />}
+                {isSelected && <Check className="w-3 h-3 text-[#38BDF8] dark:text-[#F0A830]" />}
                 {source.label}
               </button>
             )
