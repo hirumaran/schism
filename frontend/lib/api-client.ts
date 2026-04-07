@@ -107,6 +107,12 @@ export async function apiRequest<T>(
     headers: Object.fromEntries(headers.entries())
   })
 
+  // If the body is FormData, we must NOT set the Content-Type header.
+  // The browser will automatically set it to multipart/form-data with the correct boundary.
+  if (options.body instanceof FormData) {
+    headers.delete('Content-Type')
+  }
+
   const response = await fetch(buildUrl(path), {
     ...options,
     headers,

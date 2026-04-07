@@ -33,13 +33,13 @@ export async function analyzePaper(
     formData.append('file', params.file)
     formData.append('max_results', params.max_results.toString())
     formData.append('sources', params.sources.join(','))
-    if (params.title) {
-      formData.append('title', params.title)
-    }
+    formData.append('title', params.title || params.file.name)
 
     return apiRequest<AnalyzeAcceptedResponse>('/analyze/paper', {
       method: 'POST',
-      headers: providerHeaders(settings),
+      headers: {
+        ...providerHeaders(settings),
+      },
       body: formData,
     })
   }

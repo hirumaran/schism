@@ -43,20 +43,33 @@ class ExtractedSections(BaseModel):
 
 
 class PaperInputParser:
-    async def parse_upload(self, file: UploadFile) -> ParsedInput:
+    async def parse_upload(
+        self, file: UploadFile, title: str | None = None
+    ) -> ParsedInput:
         filename = file.filename or "upload"
         suffix = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
         payload = await file.read()
+        resolved_title = (title or "").strip() or None
         if suffix == "pdf":
             if PdfReader is None:
-                raise ValueError("PDF parsing is unavailable because pypdf is not installed.")
+                raise ValueError(
+                    "PDF parsing is unavailable because pypdf is not installed."
+                )
             reader = PdfReader(BytesIO(payload))
-            text = "\n".join((page.extract_text() or "") for page in reader.pages).strip()
+            text = "\n".join(
+                (page.extract_text() or "") for page in reader.pages
+            ).strip()
             if len(text) < 200:
-                raise ValueError("PDF text extraction failed - try pasting text directly")
-            return ParsedInput(text=text, filename=filename)
+                raise ValueError(
+                    "PDF text extraction failed - try pasting text directly"
+                )
+            return ParsedInput(text=text, title=resolved_title, filename=filename)
         if suffix in {"txt", "md"}:
-            return ParsedInput(text=payload.decode("utf-8").strip(), filename=filename)
+            return ParsedInput(
+                text=payload.decode("utf-8").strip(),
+                title=resolved_title,
+                filename=filename,
+            )
         raise ValueError("Unsupported upload type. Use PDF, TXT, or MD.")
 
     async def parse_text(self, text: str, title: str | None) -> ParsedInput:
@@ -79,7 +92,9 @@ class PaperInputParser:
             best_section=best_section,
         )
 
-    def _extract_section(self, lines: list[str], target_headings: set[str]) -> str | None:
+    def _extract_section(
+        self, lines: list[str], target_headings: set[str]
+    ) -> str | None:
         for index, line in enumerate(lines):
             normalized = self._normalize_heading(line)
             if normalized not in target_headings:
@@ -101,7 +116,9 @@ class PaperInputParser:
 
     @staticmethod
     def _normalize_text(text: str) -> str:
-        return re.sub(r"\n{3,}", "\n\n", (text or "").replace("\r\n", "\n").replace("\r", "\n")).strip()
+        return re.sub(
+            r"\n{3,}", "\n\n", (text or "").replace("\r\n", "\n").replace("\r", "\n")
+        ).strip()
 
     @staticmethod
     def _normalize_heading(line: str) -> str:
