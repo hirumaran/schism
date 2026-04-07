@@ -100,6 +100,13 @@ export async function apiRequest<T>(
     headers.set('Authorization', `Bearer ${authToken}`)
   }
 
+  console.log('API Request:', path, {
+    method: options.method,
+    hasBody: !!options.body,
+    bodyType: options.body?.constructor.name,
+    headers: Object.fromEntries(headers.entries())
+  })
+
   const response = await fetch(buildUrl(path), {
     ...options,
     headers,

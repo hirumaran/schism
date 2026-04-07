@@ -64,6 +64,7 @@ export default function InputPage() {
           settings
         )
       } else {
+        console.log('Paper mode - file:', file?.name, 'text length:', text?.length)
         response = await analyzePaper(
           { file: file ?? undefined, text: text || undefined, title: title || undefined, max_results: maxResults, sources },
           settings

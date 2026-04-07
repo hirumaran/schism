@@ -28,6 +28,7 @@ export async function analyzePaper(
   settings: Settings
 ): Promise<AnalyzeAcceptedResponse> {
   if (params.file) {
+    console.log('Sending file:', params.file.name, params.file.size)
     const formData = new FormData()
     formData.append('file', params.file)
     formData.append('max_results', params.max_results.toString())
