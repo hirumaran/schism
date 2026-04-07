@@ -55,7 +55,7 @@ export function SourcePicker({
       <div className="space-y-2">
         <div className="flex items-center justify-between">
           <label className="text-sm">Max papers</label>
-          <span className="text-sm text-muted-foreground">{maxResults} papers</span>
+          <span id="rangeValue" className="text-sm font-medium text-[#0F4C81] dark:text-[#F0A830]">{maxResults} papers</span>
         </div>
         <input
           type="range"
@@ -64,7 +64,7 @@ export function SourcePicker({
           step={10}
           value={maxResults}
           onChange={(e) => onMaxResultsChange(Number(e.target.value))}
-          className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-[#CBD5E1] dark:bg-[#F0A830] accent-[#1E3A5F] dark:accent-[#B87333]"
+          className="range w-full cursor-pointer"
         />
         <p className="text-xs text-muted-foreground">
           More papers = better coverage, slower analysis
