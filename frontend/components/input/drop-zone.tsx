@@ -73,28 +73,28 @@ export function DropZone({ file, onFileChange }: DropZoneProps) {
   }
 
   return (
-    <div
+    <label
       onDragOver={(e) => {
         e.preventDefault()
         setIsDragging(true)
       }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
-      className={`relative h-[180px] border-2 border-dashed rounded-md flex flex-col items-center justify-center gap-2 transition-colors ${
-        isDragging ? 'border-foreground bg-accent/50' : 'border-border'
+      className={`relative h-[180px] border-2 border-dashed rounded-md flex flex-col items-center justify-center gap-2 transition-colors cursor-pointer ${
+        isDragging ? 'border-foreground bg-accent/50' : 'border-border hover:border-foreground/50'
       }`}
     >
       <Upload className="w-6 h-6 text-muted-foreground" />
       <p className="text-sm text-muted-foreground">Drop a PDF or text file here</p>
-      <label className="text-sm text-muted-foreground/80 underline cursor-pointer hover:text-muted-foreground">
+      <span className="text-sm text-muted-foreground/80 underline">
         or click to browse
-        <input
-          type="file"
-          accept=".pdf,.txt,.md"
-          onChange={handleFileSelect}
-          className="sr-only"
-        />
-      </label>
-    </div>
+      </span>
+      <input
+        type="file"
+        accept=".pdf,.txt,.md"
+        onChange={handleFileSelect}
+        className="sr-only"
+      />
+    </label>
   )
 }
