@@ -64,7 +64,7 @@ export function SourcePicker({
           step={10}
           value={maxResults}
           onChange={(e) => onMaxResultsChange(Number(e.target.value))}
-          className="w-full h-2 bg-accent rounded-lg appearance-none cursor-pointer accent-foreground"
+          className="w-full h-2 rounded-lg appearance-none cursor-pointer bg-[#1E3A5F] dark:bg-[#1C1500] accent-[#38BDF8] dark:accent-[#F0A830]"
         />
         <p className="text-xs text-muted-foreground">
           More papers = better coverage, slower analysis
