@@ -9,9 +9,20 @@ from app.config import Settings
 from app.logging_utils import StageTimer
 from app.models.api import AnalyzeRequest
 from app.models.claim import ClaimDirection, InputClaim, PaperClaim
-from app.models.contradiction import ContradictionMode, ContradictionPair, ContradictionType
+from app.models.contradiction import (
+    ContradictionMode,
+    ContradictionPair,
+    ContradictionType,
+)
 from app.models.paper import Paper, jaccard_similarity, normalize_text, tokenize_text
-from app.models.report import AnalysisJob, AnalysisReport, ClaimCluster, InputPaperMetadata, JobStatus, SearchRun
+from app.models.report import (
+    AnalysisJob,
+    AnalysisReport,
+    ClaimCluster,
+    InputPaperMetadata,
+    JobStatus,
+    SearchRun,
+)
 from app.repositories.sqlite import SQLiteRepository
 from app.services.embedding import EmbeddingService, cosine_similarity
 from app.services.ingestion.service import IngestionResult, IngestionService
@@ -72,9 +83,13 @@ class ContradictionEngine:
         search_run: SearchRun | None = None
         try:
             await self._check_job_active(analysis_job.id)
-            await self._update_job(analysis_job, progress=10, status=JobStatus.ingesting)
+            await self._update_job(
+                analysis_job, progress=10, status=JobStatus.ingesting
+            )
             async with StageTimer("ingestion", logger):
-                papers, search_run, ingestion_result = await self._resolve_papers(request)
+                papers, search_run, ingestion_result = await self._resolve_papers(
+                    request
+                )
             warnings.extend(ingestion_result.warnings)
             await self._update_job(
                 analysis_job,
@@ -102,15 +117,21 @@ class ContradictionEngine:
                 return report
 
             self.repository.upsert_papers(papers)
-            self.repository.link_job_papers(analysis_job.id, [paper.id for paper in papers])
+            self.repository.link_job_papers(
+                analysis_job.id, [paper.id for paper in papers]
+            )
 
-            await self._update_job(analysis_job, progress=35, status=JobStatus.embedding)
+            await self._update_job(
+                analysis_job, progress=35, status=JobStatus.embedding
+            )
             async with StageTimer("embedding", logger):
                 embeddings = await self._embed_papers_with_cache(papers, context)
             await self._update_job(analysis_job, progress=50)
 
             await self._check_job_active(analysis_job.id)
-            await self._update_job(analysis_job, progress=55, status=JobStatus.analyzing)
+            await self._update_job(
+                analysis_job, progress=55, status=JobStatus.analyzing
+            )
             async with StageTimer("claim_extraction", logger):
                 claims = await self._extract_claims(papers, context)
             skipped_reasons = self._skipped_claim_reasons(claims)
@@ -121,11 +142,18 @@ class ContradictionEngine:
                 progress=70,
                 extracted_claim_count=extracted_claim_count,
                 skipped_claim_count=skipped_claim_count,
-                metadata={**analysis_job.metadata, "skipped_claim_reasons": skipped_reasons},
+                metadata={
+                    **analysis_job.metadata,
+                    "skipped_claim_reasons": skipped_reasons,
+                },
             )
 
             eligible_claims = [
-                claim for claim in claims if claim.claim and not claim.discarded and claim.quality >= request.min_claim_quality
+                claim
+                for claim in claims
+                if claim.claim
+                and not claim.discarded
+                and claim.quality >= request.min_claim_quality
             ]
             if len(eligible_claims) < 2:
                 report = AnalysisReport(
@@ -140,7 +168,10 @@ class ContradictionEngine:
                     contradiction_threshold=request.contradiction_threshold,
                     papers=papers,
                     claims=claims,
-                    warnings=[*warnings, "Not enough high-quality claims were extracted for contradiction analysis."],
+                    warnings=[
+                        *warnings,
+                        "Not enough high-quality claims were extracted for contradiction analysis.",
+                    ],
                     created_at=analysis_job.created_at,
                     completed_at=datetime.now(timezone.utc),
                 )
@@ -154,13 +185,20 @@ class ContradictionEngine:
                 analysis_job,
                 progress=75,
                 cluster_count=len(clusters),
-                metadata={**analysis_job.metadata, "cluster_metadata": cluster_metadata},
+                metadata={
+                    **analysis_job.metadata,
+                    "cluster_metadata": cluster_metadata,
+                },
             )
 
             await self._check_job_active(analysis_job.id)
             await self._update_job(analysis_job, progress=80)
             async with StageTimer("contradiction_scoring", logger):
-                contradictions, methodological, score_summary = await self._score_clusters(
+                (
+                    contradictions,
+                    methodological,
+                    score_summary,
+                ) = await self._score_clusters(
                     job=analysis_job,
                     request=request,
                     context=context,
@@ -169,9 +207,15 @@ class ContradictionEngine:
                     clusters=clusters,
                 )
 
-            contradictions = sorted(contradictions, key=lambda item: item.score, reverse=True)
-            methodological = sorted(methodological, key=lambda item: item.raw_score, reverse=True)
-            has_contradictions = score_summary["max_score"] >= 0.6 and bool(contradictions)
+            contradictions = sorted(
+                contradictions, key=lambda item: item.score, reverse=True
+            )
+            methodological = sorted(
+                methodological, key=lambda item: item.raw_score, reverse=True
+            )
+            has_contradictions = score_summary["max_score"] >= 0.6 and bool(
+                contradictions
+            )
             metadata = {
                 **analysis_job.metadata,
                 "has_contradictions": has_contradictions,
@@ -211,7 +255,9 @@ class ContradictionEngine:
                 created_at=analysis_job.created_at,
                 completed_at=datetime.now(timezone.utc),
             )
-            await self._complete_job(analysis_job, report, has_contradictions=has_contradictions)
+            await self._complete_job(
+                analysis_job, report, has_contradictions=has_contradictions
+            )
             return report
         except JobAbortedError as exc:
             job_state = self.repository.get_job(analysis_job.id) or analysis_job
@@ -222,7 +268,11 @@ class ContradictionEngine:
                 search_run=search_run,
                 warnings=[*warnings, str(exc)],
             )
-            status = job_state.status if job_state.status in {JobStatus.cancelled, JobStatus.failed} else JobStatus.cancelled
+            status = (
+                job_state.status
+                if job_state.status in {JobStatus.cancelled, JobStatus.failed}
+                else JobStatus.cancelled
+            )
             report.status = status
             job_state.status = status
             job_state.error = str(exc)
@@ -240,7 +290,9 @@ class ContradictionEngine:
                 warnings=[*warnings, str(exc)],
                 mode=ContradictionMode.paper_vs_corpus,
                 input_paper=InputPaperMetadata(
-                    title=parsed_input.title or parsed_input.filename or "User-provided paper",
+                    title=parsed_input.title
+                    or parsed_input.filename
+                    or "User-provided paper",
                     filename=parsed_input.filename,
                 ),
             )
@@ -283,8 +335,12 @@ class ContradictionEngine:
         search_run: SearchRun | None = None
         try:
             await self._check_job_active(analysis_job.id)
-            input_claims = await self.llm_client.extract_input_claims(sections.best_section, context)
-            input_paper = self._build_input_paper(analysis_job.id, parsed_input, sections, input_claims)
+            input_claims = await self.llm_client.extract_input_claims(
+                sections.best_section, context
+            )
+            input_paper = self._build_input_paper(
+                analysis_job.id, parsed_input, sections, input_claims
+            )
             input_paper_metadata = InputPaperMetadata(
                 title=input_paper.title,
                 filename=parsed_input.filename,
@@ -302,7 +358,11 @@ class ContradictionEngine:
             )
 
             async with StageTimer("ingestion", logger):
-                papers, search_run, ingestion_result = await self._resolve_papers_from_input_claims(
+                (
+                    papers,
+                    search_run,
+                    ingestion_result,
+                ) = await self._resolve_papers_from_input_claims(
                     job=analysis_job,
                     input_claims=input_claims,
                     sources=sources,
@@ -310,7 +370,9 @@ class ContradictionEngine:
                 )
             warnings.extend(ingestion_result.warnings)
             self.repository.upsert_papers([input_paper, *papers])
-            self.repository.link_job_papers(analysis_job.id, [input_paper.id, *[paper.id for paper in papers]])
+            self.repository.link_job_papers(
+                analysis_job.id, [input_paper.id, *[paper.id for paper in papers]]
+            )
             await self._update_job(
                 analysis_job,
                 progress=25,
@@ -332,7 +394,10 @@ class ContradictionEngine:
                     request=None,
                     context=context,
                     search_run=search_run,
-                    warnings=[*warnings, "No searchable claims were extracted from the input paper."],
+                    warnings=[
+                        *warnings,
+                        "No searchable claims were extracted from the input paper.",
+                    ],
                     mode=ContradictionMode.paper_vs_corpus,
                     input_paper=input_paper_metadata,
                 )
@@ -356,17 +421,23 @@ class ContradictionEngine:
                     input_paper=input_paper_metadata,
                 )
                 report.papers = [input_paper]
-                report.claims = self._input_claims_as_paper_claims(input_paper.id, context, input_claims)
+                report.claims = self._input_claims_as_paper_claims(
+                    input_paper.id, context, input_claims
+                )
                 await self._complete_job(analysis_job, report, has_contradictions=False)
                 return report
 
-            await self._update_job(analysis_job, progress=35, status=JobStatus.embedding)
+            await self._update_job(
+                analysis_job, progress=35, status=JobStatus.embedding
+            )
             async with StageTimer("embedding", logger):
                 embeddings = await self._embed_papers_with_cache(papers, context)
             await self._update_job(analysis_job, progress=50)
 
             await self._check_job_active(analysis_job.id)
-            await self._update_job(analysis_job, progress=55, status=JobStatus.analyzing)
+            await self._update_job(
+                analysis_job, progress=55, status=JobStatus.analyzing
+            )
             async with StageTimer("claim_extraction", logger):
                 claims = await self._extract_claims(papers, context)
             skipped_reasons = self._skipped_claim_reasons(claims)
@@ -377,11 +448,16 @@ class ContradictionEngine:
                 progress=70,
                 extracted_claim_count=extracted_claim_count + len(input_claims),
                 skipped_claim_count=skipped_claim_count,
-                metadata={**analysis_job.metadata, "skipped_claim_reasons": skipped_reasons},
+                metadata={
+                    **analysis_job.metadata,
+                    "skipped_claim_reasons": skipped_reasons,
+                },
             )
 
             eligible_claims = [
-                claim for claim in claims if claim.claim and not claim.discarded and claim.quality >= 0.3
+                claim
+                for claim in claims
+                if claim.claim and not claim.discarded and claim.quality >= 0.3
             ]
             async with StageTimer("clustering", logger):
                 clusters = self._cluster_papers(papers, embeddings)
@@ -390,13 +466,22 @@ class ContradictionEngine:
                 analysis_job,
                 progress=75,
                 cluster_count=len(clusters),
-                metadata={**analysis_job.metadata, "cluster_metadata": cluster_metadata},
+                metadata={
+                    **analysis_job.metadata,
+                    "cluster_metadata": cluster_metadata,
+                },
             )
 
             await self._check_job_active(analysis_job.id)
-            await self._update_job(analysis_job, progress=80, status=JobStatus.analyzing)
+            await self._update_job(
+                analysis_job, progress=80, status=JobStatus.analyzing
+            )
             async with StageTimer("contradiction_scoring", logger):
-                contradictions, methodological, score_summary = await self._score_input_claims(
+                (
+                    contradictions,
+                    methodological,
+                    score_summary,
+                ) = await self._score_input_claims(
                     job=analysis_job,
                     context=context,
                     input_paper=input_paper,
@@ -406,9 +491,15 @@ class ContradictionEngine:
                     clusters=clusters,
                 )
 
-            contradictions = sorted(contradictions, key=lambda item: item.score, reverse=True)
-            methodological = sorted(methodological, key=lambda item: item.raw_score, reverse=True)
-            has_contradictions = bool(contradictions) and score_summary["max_score"] >= 0.6
+            contradictions = sorted(
+                contradictions, key=lambda item: item.score, reverse=True
+            )
+            methodological = sorted(
+                methodological, key=lambda item: item.raw_score, reverse=True
+            )
+            has_contradictions = (
+                bool(contradictions) and score_summary["max_score"] >= 0.6
+            )
             metadata = {
                 **analysis_job.metadata,
                 "has_contradictions": has_contradictions,
@@ -440,7 +531,12 @@ class ContradictionEngine:
                 contradiction_threshold=self.settings.contradiction_threshold,
                 has_contradictions=has_contradictions,
                 papers=[input_paper, *papers],
-                claims=[*self._input_claims_as_paper_claims(input_paper.id, context, input_claims), *claims],
+                claims=[
+                    *self._input_claims_as_paper_claims(
+                        input_paper.id, context, input_claims
+                    ),
+                    *claims,
+                ],
                 clusters=clusters,
                 contradictions=contradictions,
                 methodological_differences=methodological,
@@ -450,7 +546,9 @@ class ContradictionEngine:
                 created_at=analysis_job.created_at,
                 completed_at=datetime.now(timezone.utc),
             )
-            await self._complete_job(analysis_job, report, has_contradictions=has_contradictions)
+            await self._complete_job(
+                analysis_job, report, has_contradictions=has_contradictions
+            )
             return report
         except Exception as exc:
             analysis_job.status = JobStatus.failed
@@ -466,9 +564,15 @@ class ContradictionEngine:
         warnings: list[str] = []
         if request.paper_ids:
             papers = self.repository.get_papers(request.paper_ids)
-            missing_ids = [paper_id for paper_id in request.paper_ids if paper_id not in {paper.id for paper in papers}]
+            missing_ids = [
+                paper_id
+                for paper_id in request.paper_ids
+                if paper_id not in {paper.id for paper in papers}
+            ]
             if missing_ids:
-                warnings.append(f"{len(missing_ids)} paper ids were not found in local storage.")
+                warnings.append(
+                    f"{len(missing_ids)} paper ids were not found in local storage."
+                )
             return papers, None, IngestionResult(papers=papers, warnings=warnings)
 
         ingestion_result = await self.ingestion_service.search(
@@ -527,7 +631,9 @@ class ContradictionEngine:
             for source, count in result.filtered_per_source.items():
                 filtered_per_source[source] = filtered_per_source.get(source, 0) + count
 
-        deduped, cross_claim_dedup_removed = self.ingestion_service._dedupe(aggregated_papers)  # noqa: SLF001
+        deduped, cross_claim_dedup_removed = self.ingestion_service._dedupe(
+            aggregated_papers
+        )  # noqa: SLF001
         ranked = sorted(
             deduped,
             key=lambda paper: (
@@ -560,7 +666,9 @@ class ContradictionEngine:
         self.repository.save_search_run(search_run, ranked)
         return ranked, search_run, result
 
-    async def _embed_papers_with_cache(self, papers: list[Paper], context: ProviderContext | None = None) -> list[list[float]]:
+    async def _embed_papers_with_cache(
+        self, papers: list[Paper], context: ProviderContext | None = None
+    ) -> list[list[float]]:
         texts_to_embed: list[str] = []
         indexes_to_embed: list[int] = []
         embeddings: list[list[float] | None] = [None] * len(papers)
@@ -576,7 +684,9 @@ class ContradictionEngine:
         if texts_to_embed:
             provider = context.embedding_provider if context else "local"
             api_key = context.embedding_api_key if context else None
-            new_vectors = await self.embedding_service.embed_texts(texts_to_embed, provider=provider, api_key=api_key)
+            new_vectors = await self.embedding_service.embed_texts(
+                texts_to_embed, provider=provider, api_key=api_key
+            )
             points = []
             for index, vector in zip(indexes_to_embed, new_vectors, strict=False):
                 paper = papers[index]
@@ -593,11 +703,15 @@ class ContradictionEngine:
                     }
                 )
             if new_vectors:
-                await self.vector_store.upsert_embeddings(points=points, dimensions=len(new_vectors[0]))
+                await self.vector_store.upsert_embeddings(
+                    points=points, dimensions=len(new_vectors[0])
+                )
 
         return [vector or [] for vector in embeddings]
 
-    async def _extract_claims(self, papers: list[Paper], context: ProviderContext) -> list[PaperClaim]:
+    async def _extract_claims(
+        self, papers: list[Paper], context: ProviderContext
+    ) -> list[PaperClaim]:
         cached = self.repository.get_best_claims([paper.id for paper in papers])
         fresh_claims: list[PaperClaim] = []
         concurrency = self._claim_concurrency(context)
@@ -640,7 +754,9 @@ class ContradictionEngine:
             outcome=primary_claim.outcome if primary_claim else None,
             raw={
                 "filename": parsed_input.filename,
-                "input_claims": [claim.model_dump(mode="json") for claim in input_claims],
+                "input_claims": [
+                    claim.model_dump(mode="json") for claim in input_claims
+                ],
             },
         )
 
@@ -675,14 +791,20 @@ class ContradictionEngine:
             return max(1, self.settings.anthropic_claim_concurrency)
         return max(1, self.settings.claim_concurrency)
 
-    def _cluster_papers(self, papers: list[Paper], embeddings: list[list[float]]) -> list[ClaimCluster]:
+    def _cluster_papers(
+        self, papers: list[Paper], embeddings: list[list[float]]
+    ) -> list[ClaimCluster]:
         hdbscan_clusters = self._cluster_with_hdbscan(papers, embeddings)
         if len(hdbscan_clusters) <= 1:
-            logger.info("clustering_fallback_used", extra={"reason": "hdbscan_single_or_noise"})
+            logger.info(
+                "clustering_fallback_used", extra={"reason": "hdbscan_single_or_noise"}
+            )
             return self._fallback_cluster_papers(papers, embeddings)
         return hdbscan_clusters
 
-    def _cluster_with_hdbscan(self, papers: list[Paper], embeddings: list[list[float]]) -> list[ClaimCluster]:
+    def _cluster_with_hdbscan(
+        self, papers: list[Paper], embeddings: list[list[float]]
+    ) -> list[ClaimCluster]:
         if len(papers) < 2:
             return []
         try:
@@ -692,17 +814,27 @@ class ContradictionEngine:
             return []
 
         min_cluster_size = max(2, min(5, len(papers) // 8))
-        labels = hdbscan.HDBSCAN(min_cluster_size=min_cluster_size, min_samples=1).fit_predict(np.array(embeddings))
+        labels = hdbscan.HDBSCAN(
+            min_cluster_size=min_cluster_size, min_samples=1
+        ).fit_predict(np.array(embeddings))
         grouped: dict[int, list[int]] = {}
         for index, label in enumerate(labels):
             if label < 0:
                 continue
             grouped.setdefault(int(label), []).append(index)
 
-        clusters = [self._build_cluster(f"cluster_{label}", indexes, papers, embeddings, fallback_used=False) for label, indexes in grouped.items() if len(indexes) >= 2]
+        clusters = [
+            self._build_cluster(
+                f"cluster_{label}", indexes, papers, embeddings, fallback_used=False
+            )
+            for label, indexes in grouped.items()
+            if len(indexes) >= 2
+        ]
         return [cluster for cluster in clusters if cluster.paper_count >= 2]
 
-    def _fallback_cluster_papers(self, papers: list[Paper], embeddings: list[list[float]]) -> list[ClaimCluster]:
+    def _fallback_cluster_papers(
+        self, papers: list[Paper], embeddings: list[list[float]]
+    ) -> list[ClaimCluster]:
         pair_scores = []
         for left, right in combinations(range(len(papers)), 2):
             similarity = cosine_similarity(embeddings[left], embeddings[right])
@@ -712,7 +844,9 @@ class ContradictionEngine:
 
         clusters: list[set[int]] = []
         for _, left, right in pair_scores:
-            matching = [cluster for cluster in clusters if left in cluster or right in cluster]
+            matching = [
+                cluster for cluster in clusters if left in cluster or right in cluster
+            ]
             if not matching:
                 clusters.append({left, right})
                 continue
@@ -723,12 +857,26 @@ class ContradictionEngine:
                 clusters.remove(extra)
 
         built = [
-            self._build_cluster(f"cluster_fallback_{idx+1}", sorted(indexes), papers, embeddings, fallback_used=True)
+            self._build_cluster(
+                f"cluster_fallback_{idx + 1}",
+                sorted(indexes),
+                papers,
+                embeddings,
+                fallback_used=True,
+            )
             for idx, indexes in enumerate(clusters)
             if len(indexes) >= 2
         ]
         if not built and len(papers) >= 2:
-            built = [self._build_cluster("cluster_fallback_all", list(range(len(papers))), papers, embeddings, fallback_used=True)]
+            built = [
+                self._build_cluster(
+                    "cluster_fallback_all",
+                    list(range(len(papers))),
+                    papers,
+                    embeddings,
+                    fallback_used=True,
+                )
+            ]
         return [cluster for cluster in built if cluster.paper_count >= 2]
 
     def _build_cluster(
@@ -743,9 +891,14 @@ class ContradictionEngine:
         selected = [papers[index] for index in indexes]
         trimmed_count = 0
         if len(selected) > 20:
-            selected = sorted(selected, key=lambda paper: paper.citation_count or 0, reverse=True)[:20]
+            selected = sorted(
+                selected, key=lambda paper: paper.citation_count or 0, reverse=True
+            )[:20]
             trimmed_count = len(indexes) - len(selected)
-            logger.info("cluster_trimmed", extra={"cluster_id": cluster_id, "trimmed_count": trimmed_count})
+            logger.info(
+                "cluster_trimmed",
+                extra={"cluster_id": cluster_id, "trimmed_count": trimmed_count},
+            )
 
         cluster_indexes = [papers.index(paper) for paper in selected]
         years = [paper.year for paper in selected if paper.year is not None]
@@ -770,7 +923,9 @@ class ContradictionEngine:
         papers: list[Paper],
         claims: list[PaperClaim],
         clusters: list[ClaimCluster],
-    ) -> tuple[list[ContradictionPair], list[ContradictionPair], dict[str, float | int]]:
+    ) -> tuple[
+        list[ContradictionPair], list[ContradictionPair], dict[str, float | int]
+    ]:
         paper_lookup = {paper.id: paper for paper in papers}
         claim_lookup = {claim.paper_id: claim for claim in claims}
         semaphore = asyncio.Semaphore(max(1, self.settings.scoring_concurrency))
@@ -782,11 +937,15 @@ class ContradictionEngine:
         cached_pairs = 0
         eligible_pairs = 0
 
-        async def score_pair(cluster_id: str, claim_a: PaperClaim, claim_b: PaperClaim) -> ContradictionPair | None:
+        async def score_pair(
+            cluster_id: str, claim_a: PaperClaim, claim_b: PaperClaim
+        ) -> ContradictionPair | None:
             nonlocal filtered_pairs, llm_scored_pairs, cached_pairs, eligible_pairs
             paper_a = paper_lookup[claim_a.paper_id]
             paper_b = paper_lookup[claim_b.paper_id]
-            filter_result = self._prefilter_pair(claim_a, claim_b, paper_a, paper_b, request.min_keyword_overlap)
+            filter_result = self._prefilter_pair(
+                claim_a, claim_b, paper_a, paper_b, request.min_keyword_overlap
+            )
             if filter_result["action"] == "skip":
                 filtered_pairs += 1
                 return None
@@ -818,7 +977,11 @@ class ContradictionEngine:
 
         tasks = []
         for cluster in clusters:
-            cluster_claims = [claim_lookup[paper_id] for paper_id in cluster.paper_ids if paper_id in claim_lookup]
+            cluster_claims = [
+                claim_lookup[paper_id]
+                for paper_id in cluster.paper_ids
+                if paper_id in claim_lookup
+            ]
             for claim_a, claim_b in combinations(cluster_claims, 2):
                 tasks.append(score_pair(cluster.id, claim_a, claim_b))
 
@@ -827,25 +990,41 @@ class ContradictionEngine:
             if existing is None or item.score > existing.score:
                 best_pairs[item.pair_key or ""] = item
 
+        saved_count = 0
         for item in best_pairs.values():
-            if item.type == ContradictionType.methodological and item.score < request.contradiction_threshold:
+            if (
+                item.type == ContradictionType.methodological
+                and item.score < request.contradiction_threshold
+            ):
                 methodological.append(item)
-                self.repository.save_contradiction(item, job_id=job.id, kind="methodological")
+                if self.repository.save_contradiction(
+                    item, job_id=job.id, kind="methodological"
+                ):
+                    saved_count += 1
                 continue
             if item.is_contradiction and item.score >= request.contradiction_threshold:
                 contradictions.append(item)
-                self.repository.save_contradiction(item, job_id=job.id)
+                if self.repository.save_contradiction(item, job_id=job.id):
+                    saved_count += 1
 
-        max_score = max([pair.score for pair in [*contradictions, *methodological]], default=0.0)
+        max_score = max(
+            [pair.score for pair in [*contradictions, *methodological]], default=0.0
+        )
         cache_denominator = eligible_pairs if eligible_pairs else 1
-        return contradictions, methodological, {
-            "max_score": max_score,
-            "filtered_pairs": filtered_pairs,
-            "llm_scored_pairs": llm_scored_pairs,
-            "cached_pairs": cached_pairs,
-            "eligible_pairs": eligible_pairs,
-            "cache_hit_rate": round(cached_pairs / cache_denominator, 4) if eligible_pairs else 0.0,
-        }
+        return (
+            contradictions,
+            methodological,
+            {
+                "max_score": max_score,
+                "filtered_pairs": filtered_pairs,
+                "llm_scored_pairs": llm_scored_pairs,
+                "cached_pairs": cached_pairs,
+                "eligible_pairs": eligible_pairs,
+                "cache_hit_rate": round(cached_pairs / cache_denominator, 4)
+                if eligible_pairs
+                else 0.0,
+            },
+        )
 
     async def _score_input_claims(
         self,
@@ -857,7 +1036,9 @@ class ContradictionEngine:
         fetched_papers: list[Paper],
         fetched_claims: list[PaperClaim],
         clusters: list[ClaimCluster],
-    ) -> tuple[list[ContradictionPair], list[ContradictionPair], dict[str, float | int]]:
+    ) -> tuple[
+        list[ContradictionPair], list[ContradictionPair], dict[str, float | int]
+    ]:
         paper_lookup = {paper.id: paper for paper in fetched_papers}
         cluster_lookup = {
             paper_id: cluster.id
@@ -870,10 +1051,14 @@ class ContradictionEngine:
         llm_scored_pairs = 0
         eligible_pairs = 0
 
-        async def score_pair(input_claim: InputClaim, fetched_claim: PaperClaim) -> ContradictionPair | None:
+        async def score_pair(
+            input_claim: InputClaim, fetched_claim: PaperClaim
+        ) -> ContradictionPair | None:
             nonlocal filtered_pairs, llm_scored_pairs, eligible_pairs
             paper_b = paper_lookup[fetched_claim.paper_id]
-            filter_result = self._prefilter_input_pair(input_claim, fetched_claim, input_paper, paper_b)
+            filter_result = self._prefilter_input_pair(
+                input_claim, fetched_claim, input_paper, paper_b
+            )
             if filter_result["action"] == "skip":
                 filtered_pairs += 1
                 return None
@@ -893,7 +1078,10 @@ class ContradictionEngine:
                     outcome=input_claim.outcome,
                     confidence=1.0,
                     quality=1.0,
-                    raw={"search_query": input_claim.search_query, "mode": "input_paper"},
+                    raw={
+                        "search_query": input_claim.search_query,
+                        "mode": "input_paper",
+                    },
                 )
                 async with semaphore:
                     llm_scored_pairs += 1
@@ -926,23 +1114,37 @@ class ContradictionEngine:
         contradictions: list[ContradictionPair] = []
         methodological: list[ContradictionPair] = []
         for pair in best_pairs.values():
-            if pair.type == ContradictionType.methodological and pair.score < self.settings.contradiction_threshold:
+            if (
+                pair.type == ContradictionType.methodological
+                and pair.score < self.settings.contradiction_threshold
+            ):
                 methodological.append(pair)
-                self.repository.save_contradiction(pair, job_id=job.id, kind="methodological")
+                self.repository.save_contradiction(
+                    pair, job_id=job.id, kind="methodological"
+                )
                 continue
-            if pair.is_contradiction and pair.score >= self.settings.contradiction_threshold:
+            if (
+                pair.is_contradiction
+                and pair.score >= self.settings.contradiction_threshold
+            ):
                 contradictions.append(pair)
                 self.repository.save_contradiction(pair, job_id=job.id)
 
-        max_score = max([pair.score for pair in [*contradictions, *methodological]], default=0.0)
-        return contradictions, methodological, {
-            "max_score": max_score,
-            "filtered_pairs": filtered_pairs,
-            "llm_scored_pairs": llm_scored_pairs,
-            "cached_pairs": 0,
-            "eligible_pairs": eligible_pairs,
-            "cache_hit_rate": 0.0,
-        }
+        max_score = max(
+            [pair.score for pair in [*contradictions, *methodological]], default=0.0
+        )
+        return (
+            contradictions,
+            methodological,
+            {
+                "max_score": max_score,
+                "filtered_pairs": filtered_pairs,
+                "llm_scored_pairs": llm_scored_pairs,
+                "cached_pairs": 0,
+                "eligible_pairs": eligible_pairs,
+                "cache_hit_rate": 0.0,
+            },
+        )
 
     def _prefilter_pair(
         self,
@@ -957,10 +1159,19 @@ class ContradictionEngine:
 
         outcome_a = claim_a.outcome or paper_a.outcome or ""
         outcome_b = claim_b.outcome or paper_b.outcome or ""
-        if claim_a.direction == claim_b.direction and outcome_a and outcome_b and normalize_text(outcome_a) == normalize_text(outcome_b):
+        if (
+            claim_a.direction == claim_b.direction
+            and outcome_a
+            and outcome_b
+            and normalize_text(outcome_a) == normalize_text(outcome_b)
+        ):
             return {"action": "skip"}
 
-        if claim_a.direction != ClaimDirection.null and claim_b.direction != ClaimDirection.null and claim_a.direction == claim_b.direction:
+        if (
+            claim_a.direction != ClaimDirection.null
+            and claim_b.direction != ClaimDirection.null
+            and claim_a.direction == claim_b.direction
+        ):
             return {"action": "skip"}
 
         outcome_similarity = jaccard_similarity(outcome_a, outcome_b)
@@ -969,7 +1180,11 @@ class ContradictionEngine:
 
         population_a = normalize_text(claim_a.population or paper_a.population or "")
         population_b = normalize_text(claim_b.population or paper_b.population or "")
-        if population_a and population_b and self._incompatible_populations(population_a, population_b):
+        if (
+            population_a
+            and population_b
+            and self._incompatible_populations(population_a, population_b)
+        ):
             pair = ContradictionPair(
                 paper_a_id=paper_a.id,
                 paper_b_id=paper_b.id,
@@ -989,7 +1204,10 @@ class ContradictionEngine:
             )
             return {"action": "methodological", "pair": pair}
 
-        if claim_a.direction == claim_b.direction and claim_a.direction != ClaimDirection.null:
+        if (
+            claim_a.direction == claim_b.direction
+            and claim_a.direction != ClaimDirection.null
+        ):
             return {"action": "skip"}
         return {"action": "score"}
 
@@ -1000,15 +1218,25 @@ class ContradictionEngine:
         input_paper: Paper,
         fetched_paper: Paper,
     ) -> dict[str, object]:
-        outcome_similarity = jaccard_similarity(input_claim.outcome, fetched_claim.outcome or fetched_paper.outcome)
+        outcome_similarity = jaccard_similarity(
+            input_claim.outcome, fetched_claim.outcome or fetched_paper.outcome
+        )
         if outcome_similarity < 0.2:
             return {"action": "skip"}
         if input_claim.direction == fetched_claim.direction:
             return {"action": "skip"}
 
-        population_a = normalize_text(input_claim.population or input_paper.population or "")
-        population_b = normalize_text(fetched_claim.population or fetched_paper.population or "")
-        if population_a and population_b and self._incompatible_populations(population_a, population_b):
+        population_a = normalize_text(
+            input_claim.population or input_paper.population or ""
+        )
+        population_b = normalize_text(
+            fetched_claim.population or fetched_paper.population or ""
+        )
+        if (
+            population_a
+            and population_b
+            and self._incompatible_populations(population_a, population_b)
+        ):
             pair = ContradictionPair(
                 paper_a_id=input_paper.id,
                 paper_b_id=fetched_paper.id,
@@ -1030,10 +1258,15 @@ class ContradictionEngine:
 
     @staticmethod
     def _incompatible_populations(left: str, right: str) -> bool:
-        return (left, right) in INCOMPATIBLE_POPULATIONS or (right, left) in INCOMPATIBLE_POPULATIONS
+        return (left, right) in INCOMPATIBLE_POPULATIONS or (
+            right,
+            left,
+        ) in INCOMPATIBLE_POPULATIONS
 
     @staticmethod
-    def _apply_year_penalty(pair: ContradictionPair, paper_a: Paper, paper_b: Paper) -> ContradictionPair:
+    def _apply_year_penalty(
+        pair: ContradictionPair, paper_a: Paper, paper_b: Paper
+    ) -> ContradictionPair:
         if paper_a.year is None or paper_b.year is None:
             pair.raw_score = pair.raw_score or pair.score
             return pair
@@ -1045,7 +1278,9 @@ class ContradictionEngine:
         return pair
 
     @staticmethod
-    def _average_similarity(indexes: list[int], embeddings: list[list[float]]) -> float | None:
+    def _average_similarity(
+        indexes: list[int], embeddings: list[list[float]]
+    ) -> float | None:
         comparisons = [
             cosine_similarity(embeddings[left], embeddings[right])
             for left, right in combinations(indexes, 2)
@@ -1068,9 +1303,20 @@ class ContradictionEngine:
             for text in texts:
                 for token in tokenize_text(text, drop_stop_words=True, min_length=3):
                     tokens[token] = tokens.get(token, 0) + 1
-            return [term for term, _ in sorted(tokens.items(), key=lambda item: item[1], reverse=True)[:5]]
+            return [
+                term
+                for term, _ in sorted(
+                    tokens.items(), key=lambda item: item[1], reverse=True
+                )[:5]
+            ]
 
-    async def _update_job(self, job: AnalysisJob, progress: int | None = None, status: JobStatus | None = None, **updates) -> None:
+    async def _update_job(
+        self,
+        job: AnalysisJob,
+        progress: int | None = None,
+        status: JobStatus | None = None,
+        **updates,
+    ) -> None:
         if progress is not None:
             job.progress = progress
         if status is not None:
@@ -1088,7 +1334,9 @@ class ContradictionEngine:
         if latest.status == JobStatus.failed and latest.error == "job_timeout_exceeded":
             raise JobAbortedError("job_timeout_exceeded")
 
-    async def _complete_job(self, job: AnalysisJob, report: AnalysisReport, has_contradictions: bool) -> None:
+    async def _complete_job(
+        self, job: AnalysisJob, report: AnalysisReport, has_contradictions: bool
+    ) -> None:
         job.status = JobStatus.done
         job.progress = 100
         job.has_contradictions = has_contradictions
@@ -1117,7 +1365,9 @@ class ContradictionEngine:
             provider=context.normalized_provider,
             model=context.model,
             status=job.status,
-            contradiction_threshold=request.contradiction_threshold if request is not None else self.settings.contradiction_threshold,
+            contradiction_threshold=request.contradiction_threshold
+            if request is not None
+            else self.settings.contradiction_threshold,
             warnings=warnings,
             metadata=job.metadata,
             input_paper=input_paper,
@@ -1126,7 +1376,9 @@ class ContradictionEngine:
         )
 
     @staticmethod
-    def _passes_overlap_filter(paper_a: Paper, paper_b: Paper, min_keyword_overlap: int) -> bool:
+    def _passes_overlap_filter(
+        paper_a: Paper, paper_b: Paper, min_keyword_overlap: int
+    ) -> bool:
         if min_keyword_overlap <= 0:
             return True
 
@@ -1145,7 +1397,9 @@ class ContradictionEngine:
         if metadata_a and metadata_b:
             return len(metadata_a & metadata_b) >= min_keyword_overlap
 
-        return len(paper_a.topic_tokens() & paper_b.topic_tokens()) >= min_keyword_overlap
+        return (
+            len(paper_a.topic_tokens() & paper_b.topic_tokens()) >= min_keyword_overlap
+        )
 
     @staticmethod
     def _skipped_claim_reasons(claims: list[PaperClaim]) -> dict[str, int]:

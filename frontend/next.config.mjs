@@ -4,6 +4,7 @@ const useLocalApiProxy = process.env.NODE_ENV === 'development' && apiBase.start
 
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  output: 'standalone',
   typescript: {
     ignoreBuildErrors: true,
   },

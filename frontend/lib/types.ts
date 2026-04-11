@@ -45,6 +45,7 @@ export interface Paper {
 }
 
 export interface ContradictionPair {
+  pair_key: string
   paper_a_id: string
   paper_b_id: string
   paper_a: Paper
