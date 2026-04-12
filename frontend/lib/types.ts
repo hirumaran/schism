@@ -2,6 +2,8 @@ export type Provider = 'anthropic' | 'openai' | 'ollama' | 'mock'
 
 export type EmbeddingProvider = 'local' | 'openai' | 'cohere'
 
+export type OllamaMode = 'local' | 'cloud'
+
 export type JobStatus =
   | 'pending'
   | 'running'
@@ -25,6 +27,11 @@ export interface Settings {
   anthropicModel: string
   openaiModel: string
   ollamaModel: string
+   ollamaMode: OllamaMode
+   ollamaLocalBaseUrl: string
+   ollamaLocalModel: string
+   ollamaCloudApiKey: string
+   ollamaCloudModel: string
   cohereKey: string
 }
 

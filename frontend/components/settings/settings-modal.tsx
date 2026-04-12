@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { X } from 'lucide-react'
 import { useStore } from '@/lib/store'
-import { validateKey, testOllamaConnection } from '@/lib/api'
-import type { Provider, EmbeddingProvider } from '@/lib/types'
+import { DEFAULT_OLLAMA_CLOUD_BASE_URL, validateKey, testOllamaConnection } from '@/lib/api'
+import type { Provider, EmbeddingProvider, OllamaMode, Settings } from '@/lib/types'
 
 const ANTHROPIC_FALLBACK_MODELS = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001']
 
@@ -25,6 +25,20 @@ function sortModels(models: string[]) {
 
 function getSelectedModel(models: string[], currentModel: string) {
   return models.includes(currentModel) ? currentModel : (models[0] ?? currentModel)
+}
+
+function getOllamaModel(settings: Settings) {
+  return settings.ollamaMode === 'cloud' ? settings.ollamaCloudModel : settings.ollamaLocalModel
+}
+
+function getOllamaBaseUrl(settings: Settings) {
+  return settings.ollamaMode === 'cloud'
+    ? DEFAULT_OLLAMA_CLOUD_BASE_URL
+    : settings.ollamaLocalBaseUrl
+}
+
+function getOllamaApiKey(settings: Settings) {
+  return settings.ollamaMode === 'cloud' ? settings.ollamaCloudApiKey : ''
 }
 
 async function fetchAnthropicModels(apiKey: string) {
@@ -77,24 +91,6 @@ async function fetchOpenAIModels(apiKey: string) {
   )
 }
 
-async function fetchOllamaModels(baseUrl: string) {
-  const normalizedBaseUrl = baseUrl.replace(/\/$/, '')
-  const response = await fetch(`${normalizedBaseUrl}/api/tags`)
-
-  if (!response.ok) {
-    throw new Error('Failed to fetch Ollama models')
-  }
-
-  const data = await response.json()
-  if (!Array.isArray(data?.models)) {
-    return []
-  }
-
-  return data.models
-    .map((model: { name?: string }) => model.name)
-    .filter((name: string | undefined): name is string => typeof name === 'string' && name.length > 0)
-}
-
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, addToast } = useStore()
   const [activeTab, setActiveTab] = useState<Provider>(settings.provider)
@@ -105,16 +101,32 @@ export function SettingsModal() {
   const [anthropicModels, setAnthropicModels] = useState<string[]>([])
   const [openaiModels, setOpenaiModels] = useState<string[]>([])
   const [fetchingModels, setFetchingModels] = useState(false)
+  const [ollamaValidationMessage, setOllamaValidationMessage] = useState<string | null>(null)
+  const validationRequestId = useRef(0)
+  const isOllamaCloud = localSettings.ollamaMode === 'cloud'
+  const currentOllamaModel = getOllamaModel(localSettings)
+
+  const resetOllamaValidation = () => {
+    validationRequestId.current += 1
+    setValidating(false)
+    setFetchingModels(false)
+    setValidationResult(null)
+    setOllamaValidationMessage(null)
+    setOllamaModels([])
+  }
 
   useEffect(() => {
     if (settingsOpen) {
+      validationRequestId.current += 1
       setLocalSettings(settings)
       setActiveTab(settings.provider)
+      setValidating(false)
       setValidationResult(null)
       setAnthropicModels([])
       setOpenaiModels([])
       setOllamaModels([])
       setFetchingModels(false)
+      setOllamaValidationMessage(null)
     }
   }, [settingsOpen, settings])
 
@@ -129,26 +141,33 @@ export function SettingsModal() {
   if (!settingsOpen) return null
 
   const handleTabChange = (tab: Provider) => {
+    validationRequestId.current += 1
     setActiveTab(tab)
     setLocalSettings((s) => ({ ...s, provider: tab }))
+    setValidating(false)
     setValidationResult(null)
     setAnthropicModels([])
     setOpenaiModels([])
     setOllamaModels([])
     setFetchingModels(false)
+    setOllamaValidationMessage(null)
   }
 
   const handleValidate = async () => {
+    const requestId = ++validationRequestId.current
     setValidating(true)
     setValidationResult(null)
+    setOllamaValidationMessage(null)
     try {
       const valid = await validateKey(localSettings)
+      if (requestId !== validationRequestId.current) return
       if (valid) {
         setValidationResult('valid')
         setFetchingModels(true)
         try {
           if (activeTab === 'anthropic') {
             const models = await fetchAnthropicModels(localSettings.apiKey)
+            if (requestId !== validationRequestId.current) return
             setAnthropicModels(models)
             if (models.length > 0) {
               setLocalSettings((s) => ({
@@ -158,6 +177,7 @@ export function SettingsModal() {
             }
           } else if (activeTab === 'openai') {
             const models = await fetchOpenAIModels(localSettings.apiKey)
+            if (requestId !== validationRequestId.current) return
             setOpenaiModels(models)
             if (models.length > 0) {
               setLocalSettings((s) => ({
@@ -167,6 +187,7 @@ export function SettingsModal() {
             }
           }
         } catch {
+          if (requestId !== validationRequestId.current) return
           if (activeTab === 'anthropic') {
             setAnthropicModels(ANTHROPIC_FALLBACK_MODELS)
             setLocalSettings((s) => ({
@@ -181,52 +202,87 @@ export function SettingsModal() {
             }))
           }
         } finally {
-          setFetchingModels(false)
+          if (requestId === validationRequestId.current) {
+            setFetchingModels(false)
+          }
         }
       } else {
         setValidationResult('invalid')
       }
     } catch {
-      setValidationResult('error')
+      if (requestId === validationRequestId.current) {
+        setValidationResult('error')
+      }
     }
-    setValidating(false)
+    if (requestId === validationRequestId.current) {
+      setValidating(false)
+    }
   }
 
   const handleTestOllama = async () => {
+    const requestId = ++validationRequestId.current
+    const baseUrl = getOllamaBaseUrl(localSettings)
+    const apiKey = getOllamaApiKey(localSettings)
+
     setValidating(true)
     setValidationResult(null)
+    setOllamaValidationMessage(null)
     try {
-      await testOllamaConnection(localSettings.baseUrl)
+      const result = await testOllamaConnection(baseUrl, apiKey)
+      if (requestId !== validationRequestId.current) return
 
-      try {
-        const models = await fetchOllamaModels(localSettings.baseUrl)
+      const models = sortModels(result.models)
+      setOllamaModels(models)
+      if (models.length > 0) {
         setOllamaModels(models)
-        if (models.length > 0) {
-          setLocalSettings((s) => ({
-            ...s,
-            ollamaModel: getSelectedModel(models, s.ollamaModel),
-          }))
-        }
-      } catch {
-        setOllamaModels([])
+        setLocalSettings((s) => {
+          const selectedModel = getSelectedModel(models, getOllamaModel(s))
+          return s.ollamaMode === 'cloud'
+            ? { ...s, ollamaCloudModel: selectedModel, ollamaModel: selectedModel }
+            : { ...s, ollamaLocalModel: selectedModel, ollamaModel: selectedModel }
+        })
       }
 
       setValidationResult('valid')
-    } catch {
+      setOllamaValidationMessage(
+        isOllamaCloud
+          ? models.length > 0
+            ? `API key validated - ${models.length} models available`
+            : 'API key validated. No cloud models were returned, so enter one manually.'
+          : models.length > 0
+            ? `Connected - ${models.length} models available`
+            : 'Connected. No installed models were returned, so enter one manually.'
+      )
+    } catch (error) {
+      if (requestId !== validationRequestId.current) return
       setOllamaModels([])
       setValidationResult('error')
+      setOllamaValidationMessage(
+        error instanceof Error
+          ? error.message
+          : isOllamaCloud
+            ? 'Could not validate the Ollama Cloud API key'
+            : `Cannot connect to Ollama at ${baseUrl}`
+      )
     }
-    setValidating(false)
+    if (requestId === validationRequestId.current) {
+      setValidating(false)
+    }
   }
 
   const handleSave = () => {
+    const finalOllamaModel = getOllamaModel(localSettings)
     const finalModel =
       localSettings.provider === 'anthropic'
         ? localSettings.anthropicModel
         : localSettings.provider === 'openai'
           ? localSettings.openaiModel
-          : localSettings.ollamaModel
-    const finalSettings = { ...localSettings, model: finalModel }
+          : finalOllamaModel
+    const finalSettings = {
+      ...localSettings,
+      ollamaModel: finalOllamaModel,
+      model: finalModel,
+    }
     setLocalSettings(finalSettings)
     updateSettings(finalSettings)
     addToast('Settings saved', 'success')
@@ -279,13 +335,14 @@ export function SettingsModal() {
                     type="password"
                     placeholder="sk-ant-..."
                     value={localSettings.apiKey}
-                    onChange={(e) =>
-                      {
-                        setValidationResult(null)
-                        setAnthropicModels([])
-                        setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
-                      }
-                    }
+                    onChange={(e) => {
+                      validationRequestId.current += 1
+                      setValidating(false)
+                      setFetchingModels(false)
+                      setValidationResult(null)
+                      setAnthropicModels([])
+                      setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                    }}
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
                   <a
@@ -360,13 +417,14 @@ export function SettingsModal() {
                     type="password"
                     placeholder="sk-..."
                     value={localSettings.apiKey}
-                    onChange={(e) =>
-                      {
-                        setValidationResult(null)
-                        setOpenaiModels([])
-                        setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
-                      }
-                    }
+                    onChange={(e) => {
+                      validationRequestId.current += 1
+                      setValidating(false)
+                      setFetchingModels(false)
+                      setValidationResult(null)
+                      setOpenaiModels([])
+                      setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                    }}
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
                   <a
@@ -432,35 +490,86 @@ export function SettingsModal() {
           {activeTab === 'ollama' && (
             <>
               <p className="text-sm text-muted-foreground">
-                Run models locally with Ollama. No API key needed. Ollama must be running on your machine or network. Results are slower but completely free and private.
+                {isOllamaCloud
+                  ? 'Use Ollama Cloud with an API key. Validate the key to load cloud models, or type a model name manually if discovery is unavailable.'
+                  : 'Run models locally with Ollama. No API key needed. Ollama must be running on your machine or network. Results are slower but completely free and private.'}
               </p>
               <div className="space-y-4">
                 <div>
-                  <label className="block text-sm font-medium mb-1">Ollama base URL</label>
-                  <input
-                    type="text"
-                    placeholder="http://localhost:11434"
-                    value={localSettings.baseUrl}
-                    onChange={(e) =>
-                      {
-                        setValidationResult(null)
-                        setOllamaModels([])
-                        setLocalSettings((s) => ({ ...s, baseUrl: e.target.value }))
-                      }
-                    }
-                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Change this if Ollama runs on another machine
-                  </p>
+                  <label className="block text-sm font-medium mb-2">Mode</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    {([
+                      { value: 'local', label: 'Local Ollama' },
+                      { value: 'cloud', label: 'Ollama Cloud' },
+                    ] as { value: OllamaMode; label: string }[]).map((mode) => (
+                      <button
+                        key={mode.value}
+                        onClick={() => {
+                          if (localSettings.ollamaMode === mode.value) return
+                          resetOllamaValidation()
+                          setLocalSettings((s) => ({
+                            ...s,
+                            ollamaMode: mode.value,
+                            ollamaModel: mode.value === 'cloud' ? s.ollamaCloudModel : s.ollamaLocalModel,
+                          }))
+                        }}
+                        className={`px-3 py-2 text-sm border border-border rounded-md ${
+                          localSettings.ollamaMode === mode.value
+                            ? 'bg-accent font-medium'
+                            : 'text-muted-foreground'
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
+                {isOllamaCloud ? (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">API key</label>
+                    <input
+                      type="password"
+                      placeholder="ollama_..."
+                      value={localSettings.ollamaCloudApiKey}
+                      onChange={(e) => {
+                        resetOllamaValidation()
+                        setLocalSettings((s) => ({ ...s, ollamaCloudApiKey: e.target.value }))
+                      }}
+                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Cloud requests use Bearer token auth against {DEFAULT_OLLAMA_CLOUD_BASE_URL}/api.
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <label className="block text-sm font-medium mb-1">Ollama base URL</label>
+                    <input
+                      type="text"
+                      placeholder="http://localhost:11434"
+                      value={localSettings.ollamaLocalBaseUrl}
+                      onChange={(e) => {
+                        resetOllamaValidation()
+                        setLocalSettings((s) => ({ ...s, ollamaLocalBaseUrl: e.target.value }))
+                      }}
+                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Change this if Ollama runs on another machine
+                    </p>
+                  </div>
+                )}
                 <div>
                   <label className="block text-sm font-medium mb-1">Model</label>
                   {ollamaModels.length > 0 ? (
                     <select
-                      value={ollamaModels.includes(localSettings.ollamaModel) ? localSettings.ollamaModel : ollamaModels[0]}
+                      value={ollamaModels.includes(currentOllamaModel) ? currentOllamaModel : ollamaModels[0]}
                       onChange={(e) =>
-                        setLocalSettings((s) => ({ ...s, ollamaModel: e.target.value }))
+                        setLocalSettings((s) =>
+                          s.ollamaMode === 'cloud'
+                            ? { ...s, ollamaCloudModel: e.target.value, ollamaModel: e.target.value }
+                            : { ...s, ollamaLocalModel: e.target.value, ollamaModel: e.target.value }
+                        )
                       }
                       className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                     >
@@ -472,48 +581,62 @@ export function SettingsModal() {
                     <>
                       <input
                         type="text"
-                        placeholder="llama3.1"
-                        value={localSettings.ollamaModel}
+                        placeholder={isOllamaCloud ? 'e.g. llama3.1' : 'llama3.1'}
+                        value={currentOllamaModel}
                         onChange={(e) =>
-                          setLocalSettings((s) => ({ ...s, ollamaModel: e.target.value }))
+                          setLocalSettings((s) =>
+                            s.ollamaMode === 'cloud'
+                              ? { ...s, ollamaCloudModel: e.target.value, ollamaModel: e.target.value }
+                              : { ...s, ollamaLocalModel: e.target.value, ollamaModel: e.target.value }
+                          )
                         }
                         className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                       />
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Must be pulled in Ollama first: ollama pull llama3.1
-                      </p>
-                      <div className="flex flex-wrap gap-2 mt-2">
-                        {OLLAMA_CHIPS.map((chip) => (
-                          <button
-                            key={chip}
-                            onClick={() =>
-                              setLocalSettings((s) => ({ ...s, ollamaModel: chip }))
-                            }
-                            className="px-3 py-1 text-xs border border-border rounded-full hover:bg-accent"
-                          >
-                            {chip}
-                          </button>
-                        ))}
-                      </div>
+                      {isOllamaCloud ? (
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Validate your API key to see available models.
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            Must be pulled in Ollama first: ollama pull llama3.1
+                          </p>
+                          <div className="flex flex-wrap gap-2 mt-2">
+                            {OLLAMA_CHIPS.map((chip) => (
+                              <button
+                                key={chip}
+                                onClick={() =>
+                                  setLocalSettings((s) => ({
+                                    ...s,
+                                    ollamaLocalModel: chip,
+                                    ollamaModel: chip,
+                                  }))
+                                }
+                                className="px-3 py-1 text-xs border border-border rounded-full hover:bg-accent"
+                              >
+                                {chip}
+                              </button>
+                            ))}
+                          </div>
+                        </>
+                      )}
                     </>
                   )}
                 </div>
                 <button
                   onClick={handleTestOllama}
-                  disabled={validating}
+                  disabled={validating || (isOllamaCloud ? !localSettings.ollamaCloudApiKey : !localSettings.ollamaLocalBaseUrl)}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  {validating ? 'Testing...' : 'Test connection'}
+                  {validating
+                    ? (isOllamaCloud ? 'Validating...' : 'Testing...')
+                    : (isOllamaCloud ? 'Validate key' : 'Test connection')}
                 </button>
-                {validationResult === 'valid' && ollamaModels.length > 0 && (
-                  <p className="text-sm text-green-600">
-                    Connected - {ollamaModels.length} models available
-                  </p>
+                {validationResult === 'valid' && ollamaValidationMessage && (
+                  <p className="text-sm text-green-600">{ollamaValidationMessage}</p>
                 )}
-                {validationResult === 'error' && (
-                  <p className="text-sm text-red-600">
-                    Cannot connect to Ollama at {localSettings.baseUrl}
-                  </p>
+                {validationResult === 'error' && ollamaValidationMessage && (
+                  <p className="text-sm text-red-600">{ollamaValidationMessage}</p>
                 )}
               </div>
             </>

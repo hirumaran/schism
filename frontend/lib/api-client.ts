@@ -4,6 +4,7 @@ import type { Settings } from './types'
 
 const AUTH_TOKEN_KEY = 'schism_auth_token'
 const RAW_API_BASE = process.env.NEXT_PUBLIC_API_URL?.trim() || '/api'
+export const DEFAULT_OLLAMA_CLOUD_BASE_URL = 'https://ollama.com'
 
 export class ApiError extends Error {
   constructor(
@@ -51,15 +52,29 @@ function notifyAuthExpired(): void {
 
 export function providerHeaders(settings?: Settings): HeadersInit {
   if (!settings) return {}
+  let apiKey = settings.apiKey
+  let model = settings.model
+  let baseUrl = ''
+
+  if (settings.provider === 'ollama') {
+    const isCloudMode = settings.ollamaMode === 'cloud'
+    apiKey = isCloudMode ? settings.ollamaCloudApiKey : ''
+    model = isCloudMode ? settings.ollamaCloudModel : settings.ollamaLocalModel
+    baseUrl = isCloudMode ? DEFAULT_OLLAMA_CLOUD_BASE_URL : settings.ollamaLocalBaseUrl
+  }
+
   const headers: HeadersInit = {
     'X-Provider': settings.provider,
-    'X-Model': settings.model,
-    'X-Base-Url': settings.baseUrl,
+    'X-Model': model,
     'X-Embedding-Provider': settings.embeddingProvider,
   }
 
-  if (settings.apiKey) {
-    headers['X-Api-Key'] = settings.apiKey
+  if (baseUrl) {
+    headers['X-Base-Url'] = baseUrl
+  }
+
+  if (apiKey) {
+    headers['X-Api-Key'] = apiKey
   }
 
   return headers

@@ -32,10 +32,15 @@ const defaultSettings: Settings = {
   apiKey: '',
   model: 'claude-3-5-sonnet-latest',
   embeddingProvider: 'local',
-  baseUrl: 'http://localhost:11434',
+  baseUrl: '',
   anthropicModel: 'claude-3-5-sonnet-latest',
   openaiModel: 'gpt-4.1-mini',
   ollamaModel: 'llama3.1',
+  ollamaMode: 'local',
+  ollamaLocalBaseUrl: 'http://localhost:11434',
+  ollamaLocalModel: 'llama3.1',
+  ollamaCloudApiKey: '',
+  ollamaCloudModel: 'llama3.1',
   cohereKey: '',
 }
 
@@ -98,6 +103,19 @@ export const useStore = create<SchismStore>()(
         settings: state.settings,
         recentJobs: state.recentJobs,
       }),
+      merge: (persistedState, currentState) => {
+        const typedPersistedState = persistedState as Partial<SchismStore> | undefined
+
+        return {
+          ...currentState,
+          ...typedPersistedState,
+          settings: {
+            ...defaultSettings,
+            ...typedPersistedState?.settings,
+          },
+          recentJobs: typedPersistedState?.recentJobs ?? currentState.recentJobs,
+        }
+      },
     }
   )
 )
