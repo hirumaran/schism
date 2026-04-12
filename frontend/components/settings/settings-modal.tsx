@@ -6,18 +6,18 @@ import { useStore } from '@/lib/store'
 import { validateKey, testOllamaConnection } from '@/lib/api'
 import type { Provider, EmbeddingProvider } from '@/lib/types'
 
-const ANTHROPIC_MODELS = [
-  { value: 'claude-3-5-sonnet-latest', label: 'claude-3-5-sonnet-latest', desc: 'Backend default, balanced quality' },
-  { value: 'claude-3-5-haiku-latest', label: 'claude-3-5-haiku-latest', desc: 'Fast and cheaper for larger jobs' },
-]
+const ANTHROPIC_FALLBACK_MODELS = ['claude-opus-4-6', 'claude-sonnet-4-6', 'claude-haiku-4-5-20251001']
 
-const OPENAI_MODELS = [
-  { value: 'gpt-4.1-mini', label: 'gpt-4.1-mini', desc: 'Backend default, best value' },
-  { value: 'gpt-4.1', label: 'gpt-4.1', desc: 'Higher quality reasoning' },
-  { value: 'gpt-4o-mini', label: 'gpt-4o-mini', desc: 'Alternative low-cost option' },
-]
+const OPENAI_FALLBACK_MODELS = ['gpt-4o', 'gpt-4o-mini', 'gpt-4-turbo']
 
 const OLLAMA_CHIPS = ['llama3.1', 'mistral', 'mixtral', 'phi3', 'gemma']
+
+const PROVIDER_LABELS: Record<Provider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  ollama: 'Ollama',
+  mock: 'Mock',
+}
 
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, addToast } = useStore()
@@ -26,6 +26,9 @@ export function SettingsModal() {
   const [validating, setValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<'valid' | 'invalid' | 'error' | null>(null)
   const [ollamaModels, setOllamaModels] = useState<string[]>([])
+  const [anthropicModels, setAnthropicModels] = useState<string[]>([])
+  const [openaiModels, setOpenaiModels] = useState<string[]>([])
+  const [fetchingModels, setFetchingModels] = useState(false)
 
   useEffect(() => {
     if (settingsOpen) {
@@ -49,6 +52,9 @@ export function SettingsModal() {
     setActiveTab(tab)
     setLocalSettings((s) => ({ ...s, provider: tab }))
     setValidationResult(null)
+    setAnthropicModels([])
+    setOpenaiModels([])
+    setOllamaModels([])
   }
 
   const handleValidate = async () => {
@@ -56,7 +62,41 @@ export function SettingsModal() {
     setValidationResult(null)
     try {
       const valid = await validateKey(localSettings)
-      setValidationResult(valid ? 'valid' : 'invalid')
+      if (valid) {
+        setValidationResult('valid')
+        setFetchingModels(true)
+        try {
+          if (activeTab === 'anthropic') {
+            const res = await fetch('https://api.anthropic.com/v1/models', {
+              headers: { 'x-api-key': localSettings.apiKey, 'anthropic-version': '2023-06-01' },
+            })
+            if (res.ok) {
+              const data = await res.json()
+              const ids: string[] = (data.models ?? data.data ?? []).map((m: { id: string }) => m.id)
+              setAnthropicModels(ids.filter((id) => id.startsWith('claude-')).sort())
+            } else {
+              setAnthropicModels(ANTHROPIC_FALLBACK_MODELS)
+            }
+          } else if (activeTab === 'openai') {
+            const res = await fetch('https://api.openai.com/v1/models', {
+              headers: { Authorization: `Bearer ${localSettings.apiKey}` },
+            })
+            if (res.ok) {
+              const data = await res.json()
+              const ids: string[] = (data.data ?? []).map((m: { id: string }) => m.id)
+              setOpenaiModels(ids.filter((id) => id.includes('gpt-4') || id.includes('gpt-3.5')).sort())
+            } else {
+              setOpenaiModels(OPENAI_FALLBACK_MODELS)
+            }
+          }
+        } catch {
+          if (activeTab === 'anthropic') setAnthropicModels(ANTHROPIC_FALLBACK_MODELS)
+          else if (activeTab === 'openai') setOpenaiModels(OPENAI_FALLBACK_MODELS)
+        }
+        setFetchingModels(false)
+      } else {
+        setValidationResult('invalid')
+      }
     } catch {
       setValidationResult('error')
     }
@@ -112,13 +152,13 @@ export function SettingsModal() {
             <button
               key={tab}
               onClick={() => handleTabChange(tab)}
-              className={`flex-1 py-3 text-sm capitalize ${
+              className={`flex-1 py-3 text-sm ${
                 activeTab === tab
                   ? 'border-b-2 border-foreground font-medium'
                   : 'text-muted-foreground'
               }`}
             >
-              {tab}
+              {PROVIDER_LABELS[tab]}
             </button>
           ))}
         </div>
@@ -152,29 +192,41 @@ export function SettingsModal() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Model</label>
-                  <select
-                    value={localSettings.anthropicModel}
-                    onChange={(e) =>
-                      setLocalSettings((s) => ({ ...s, anthropicModel: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
-                  >
-                    {ANTHROPIC_MODELS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {ANTHROPIC_MODELS.find((m) => m.value === localSettings.anthropicModel)?.desc}
-                  </p>
+                  {anthropicModels.length > 0 ? (
+                    <select
+                      value={anthropicModels.includes(localSettings.anthropicModel) ? localSettings.anthropicModel : anthropicModels[0]}
+                      onChange={(e) =>
+                        setLocalSettings((s) => ({ ...s, anthropicModel: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                    >
+                      {anthropicModels.map((id) => (
+                        <option key={id} value={id}>{id}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="e.g. claude-sonnet-4-6"
+                        value={localSettings.anthropicModel}
+                        onChange={(e) =>
+                          setLocalSettings((s) => ({ ...s, anthropicModel: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Validate your key to see available models
+                      </p>
+                    </>
+                  )}
                 </div>
                 <button
                   onClick={handleValidate}
-                  disabled={validating || !localSettings.apiKey}
+                  disabled={validating || fetchingModels || !localSettings.apiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  {validating ? 'Checking...' : 'Check backend connection'}
+                  {validating ? 'Checking...' : fetchingModels ? 'Fetching models...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
                   <p className="text-sm text-green-600">Backend is reachable</p>
@@ -217,29 +269,41 @@ export function SettingsModal() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Model</label>
-                  <select
-                    value={localSettings.openaiModel}
-                    onChange={(e) =>
-                      setLocalSettings((s) => ({ ...s, openaiModel: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
-                  >
-                    {OPENAI_MODELS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {OPENAI_MODELS.find((m) => m.value === localSettings.openaiModel)?.desc}
-                  </p>
+                  {openaiModels.length > 0 ? (
+                    <select
+                      value={openaiModels.includes(localSettings.openaiModel) ? localSettings.openaiModel : openaiModels[0]}
+                      onChange={(e) =>
+                        setLocalSettings((s) => ({ ...s, openaiModel: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                    >
+                      {openaiModels.map((id) => (
+                        <option key={id} value={id}>{id}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="e.g. gpt-4o"
+                        value={localSettings.openaiModel}
+                        onChange={(e) =>
+                          setLocalSettings((s) => ({ ...s, openaiModel: e.target.value }))
+                        }
+                        className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Validate your key to see available models
+                      </p>
+                    </>
+                  )}
                 </div>
                 <button
                   onClick={handleValidate}
-                  disabled={validating || !localSettings.apiKey}
+                  disabled={validating || fetchingModels || !localSettings.apiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  {validating ? 'Checking...' : 'Check backend connection'}
+                  {validating ? 'Checking...' : fetchingModels ? 'Fetching models...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
                   <p className="text-sm text-green-600">Backend is reachable</p>
@@ -277,31 +341,47 @@ export function SettingsModal() {
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">Model</label>
-                  <input
-                    type="text"
-                    placeholder="llama3.1"
-                    value={localSettings.ollamaModel}
-                    onChange={(e) =>
-                      setLocalSettings((s) => ({ ...s, ollamaModel: e.target.value }))
-                    }
-                    className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Must be pulled in Ollama first: ollama pull llama3.1
-                  </p>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {OLLAMA_CHIPS.map((chip) => (
-                      <button
-                        key={chip}
-                        onClick={() =>
-                          setLocalSettings((s) => ({ ...s, ollamaModel: chip }))
+                  {ollamaModels.length > 0 ? (
+                    <select
+                      value={ollamaModels.includes(localSettings.ollamaModel) ? localSettings.ollamaModel : ollamaModels[0]}
+                      onChange={(e) =>
+                        setLocalSettings((s) => ({ ...s, ollamaModel: e.target.value }))
+                      }
+                      className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                    >
+                      {ollamaModels.map((name) => (
+                        <option key={name} value={name}>{name}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <>
+                      <input
+                        type="text"
+                        placeholder="llama3.1"
+                        value={localSettings.ollamaModel}
+                        onChange={(e) =>
+                          setLocalSettings((s) => ({ ...s, ollamaModel: e.target.value }))
                         }
-                        className="px-3 py-1 text-xs border border-border rounded-full hover:bg-accent"
-                      >
-                        {chip}
-                      </button>
-                    ))}
-                  </div>
+                        className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
+                      />
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Must be pulled in Ollama first: ollama pull llama3.1
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        {OLLAMA_CHIPS.map((chip) => (
+                          <button
+                            key={chip}
+                            onClick={() =>
+                              setLocalSettings((s) => ({ ...s, ollamaModel: chip }))
+                            }
+                            className="px-3 py-1 text-xs border border-border rounded-full hover:bg-accent"
+                          >
+                            {chip}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
                 <button
                   onClick={handleTestOllama}

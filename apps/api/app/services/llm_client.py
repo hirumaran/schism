@@ -49,12 +49,12 @@ Return JSON:
 
 CLAIM_FALLBACK_PROMPT = """
 Return valid JSON only:
-{
+{{
   "found": true,
   "claim": "single finding sentence",
   "direction": "positive|negative|null",
   "confidence": 0.0
-}
+}}
 
 Title: {title}
 Abstract: {abstract}
