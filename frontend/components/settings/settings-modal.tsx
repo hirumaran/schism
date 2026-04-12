@@ -77,6 +77,24 @@ async function fetchOpenAIModels(apiKey: string) {
   )
 }
 
+async function fetchOllamaModels(baseUrl: string) {
+  const normalizedBaseUrl = baseUrl.replace(/\/$/, '')
+  const response = await fetch(`${normalizedBaseUrl}/api/tags`)
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch Ollama models')
+  }
+
+  const data = await response.json()
+  if (!Array.isArray(data?.models)) {
+    return []
+  }
+
+  return data.models
+    .map((model: { name?: string }) => model.name)
+    .filter((name: string | undefined): name is string => typeof name === 'string' && name.length > 0)
+}
+
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, addToast } = useStore()
   const [activeTab, setActiveTab] = useState<Provider>(settings.provider)
@@ -178,14 +196,21 @@ export function SettingsModal() {
     setValidating(true)
     setValidationResult(null)
     try {
-      const result = await testOllamaConnection(localSettings.baseUrl)
-      setOllamaModels(result.models)
-      if (result.models.length > 0) {
-        setLocalSettings((s) => ({
-          ...s,
-          ollamaModel: getSelectedModel(result.models, s.ollamaModel),
-        }))
+      await testOllamaConnection(localSettings.baseUrl)
+
+      try {
+        const models = await fetchOllamaModels(localSettings.baseUrl)
+        setOllamaModels(models)
+        if (models.length > 0) {
+          setLocalSettings((s) => ({
+            ...s,
+            ollamaModel: getSelectedModel(models, s.ollamaModel),
+          }))
+        }
+      } catch {
+        setOllamaModels([])
       }
+
       setValidationResult('valid')
     } catch {
       setOllamaModels([])
