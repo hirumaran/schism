@@ -1,124 +1,122 @@
+---
 # Schism
 
-Find research papers that contradict each other - or contradict yours.
+Find research papers that contradict each other —
+or contradict yours.
 
 ## What it does
 
-Schism takes either a search query or your own research paper and finds published papers with conflicting conclusions. It surfaces direct contradictions, conditional contradictions (same question, different populations), and methodological differences.
+Schism takes a research topic or your own paper and
+finds published papers with conflicting conclusions.
+
+- **Direct** — same population, same outcome,
+  opposite result
+- **Conditional** — same question, different
+  conditions or subgroups lead to opposite findings
+- **Methodological** — same question, different
+  methodology leads to different conclusions
 
 ## Two modes
 
-**Query mode** - search by topic, find papers that contradict each other within that topic.
+**Query mode** — enter a topic. Schism searches
+arXiv, Semantic Scholar, PubMed, and OpenAlex,
+extracts the main claim from each paper, clusters
+them by subtopic, and surfaces pairs with
+contradictory conclusions.
 
-**Paper input mode** - paste your abstract or upload your PDF, find papers that contradict your specific claims.
+**Paper mode** — paste your abstract or upload a
+PDF. Schism extracts your specific claims and finds
+published papers that directly contradict each one.
+Useful before submission.
 
 ## Quick start
 
-```bash
-bash apps/scripts/schism.sh
-```
+### With Docker
 
-Backend: http://localhost:8000  
+  cp apps/api/.env.example apps/api/.env
+  docker compose up
+
+Backend: http://localhost:8000
 Frontend: http://localhost:3000
+API docs: http://localhost:8000/docs
 
-## Docker Quick start
+### Without Docker
 
-```bash
-cp apps/api/.env.example apps/api/.env
-docker compose up
-```
+  # Terminal 1 — backend
+  cd apps/api
+  python -m venv .venv
+  source .venv/bin/activate
+  pip install -e ".[ml]"
+  uvicorn app.main:app --reload --port 8000
 
-API runs at http://localhost:8000  
-Docs at http://localhost:8000/docs
+  # Terminal 2 — frontend
+  cd frontend
+  npm install
+  npm run dev
 
-## Running the Project Locally
+### One command (local dev)
 
-### Prerequisites
+  bash apps/scripts/schism.sh
 
-- Node.js 20+
-- Python 3.12+
-- `pip` and `venv`
-- Optional: Docker and Docker Compose for the one-command stack
+## API keys
 
-### Backend setup
+Schism never stores your API keys on any server.
+Keys are saved in your browser's localStorage and
+injected per-request. Open Settings in the top-right
+corner to configure your provider.
 
-```bash
-cd apps/api
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-cp .env.example .env
-python -m app.main
-```
+| Provider  | Notes                              |
+|-----------|------------------------------------|
+| Anthropic | Recommended. claude-sonnet-4-6     |
+| OpenAI    | Good alternative. gpt-4o-mini      |
+| Ollama    | Local, free, private. No key needed|
+| Mock      | No key. Heuristic results only     |
 
-The FastAPI backend runs at http://localhost:8000 and the OpenAPI docs are at http://localhost:8000/docs.
+## Paper sources
 
-### Frontend setup
+All sources are free — no API keys required.
 
-```bash
-cd frontend
-npm install
-cp .env.example .env.local
-npm run dev
-```
+| Source           | Coverage                        |
+|------------------|---------------------------------|
+| arXiv            | Preprints — CS, physics, bio    |
+| Semantic Scholar | 200M+ papers, all fields        |
+| PubMed           | Biomedical, NIH indexed         |
+| OpenAlex         | Broad coverage, open access     |
 
-The Next.js frontend runs at http://localhost:3000.
+## Environment variables
 
-### Environment variables
+Copy apps/api/.env.example to apps/api/.env
 
-Backend variables live in `apps/api/.env.example`:
+| Variable                      | Default        | Description                  |
+|-------------------------------|----------------|------------------------------|
+| SCHISM_DATABASE_URL           | sqlite:///...  | Database path                |
+| SCHISM_ENABLE_QDRANT          | false          | Enable vector store          |
+| SCHISM_QDRANT_URL             | localhost:6333 | Qdrant URL                   |
+| SCHISM_CONTRADICTION_THRESHOLD| 0.6            | Min score to surface pairs   |
+| SCHISM_JOB_TIMEOUT_MINUTES    | 15             | Max job duration             |
+| SCHISM_QUERY_CACHE_HOURS      | 6              | Cache raw API results        |
+| SCHISM_ANALYSIS_CACHE_HOURS   | 24             | Cache full analyses          |
 
-- `PORT=8000`
-- `FRONTEND_URL=http://localhost:3000`
-- `SCHISM_ALLOWED_ORIGINS=http://localhost:3000,http://127.0.0.1:3000`
+## Troubleshooting
 
-Frontend variables live in `frontend/.env.example`:
+**Cannot reach backend**
+Make sure uvicorn is running on port 8000.
+Check SCHISM_API_PROXY_TARGET in frontend/.env.local.
 
-- `NEXT_PUBLIC_API_URL=/api`
-- `SCHISM_API_PROXY_TARGET=http://localhost:8000`
+**No contradictions found**
+Try a more specific query. Increase max papers.
+Add more sources. The threshold is 0.6 — pairs
+below this are filtered out.
 
-In local development the frontend defaults to `/api` and Next.js rewrites those requests to the backend, so you do not need to hardcode `localhost:8000` in the browser.
+**LLM provider error**
+Your API key may be invalid or rate-limited.
+Open Settings and use the Validate button.
 
-### Docker option
+**PDF extraction failed**
+Some PDFs are scanned images with no selectable
+text. Paste the abstract manually instead.
 
-```bash
-cp apps/api/.env.example apps/api/.env
-docker compose up --build
-```
-
-This starts the backend at http://localhost:8000 plus the supporting services defined in `docker-compose.yml`.
-
-## API key setup
-
-Schism never stores your API keys. Pass them per-request:
-
-```bash
-curl -X POST http://localhost:8000/api/analyze \
-  -H "X-Provider: anthropic" \
-  -H "X-Api-Key: sk-ant-..." \
-  -H "Content-Type: application/json" \
-  -d '{"query": "vitamin D depression", "max_results": 40}'
-```
-
-Supported providers: anthropic, openai, ollama (local, no key needed)
-
-## Paper input example
-
-```bash
-curl -X POST http://localhost:8000/api/analyze/paper \
-  -H "X-Provider: anthropic" \
-  -H "X-Api-Key: sk-ant-..." \
-  -F "file=@my_paper.pdf"
-```
-
-```bash
-curl -X POST http://localhost:8000/api/analyze/paper \
-  -H "X-Provider: anthropic" \
-  -H "X-Api-Key: sk-ant-..." \
-  -H "Content-Type: application/json" \
-  -d '{"text": "your abstract here..."}'
-```
-
-## Free paper sources
-
-arXiv · Semantic Scholar · PubMed · OpenAlex - all free, no keys needed.
+**Ollama not connecting**
+Run: ollama serve
+Check the base URL in Settings matches your setup.
+Pull the model first: ollama pull llama3

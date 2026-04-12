@@ -107,9 +107,13 @@ export function ContradictionCard({ pair, isHighlighted, id }: ContradictionCard
         <p className="text-xs text-muted-foreground mt-0.5">
           {formatAuthors(pair.paper_a.authors)} · {pair.paper_a.year || 'N/A'}
         </p>
-        {pair.paper_a_claim && (
+        {pair.paper_a_claim ? (
           <p className="font-serif text-sm text-muted-foreground italic mt-2 pl-3 border-l-2 border-border">
             {pair.paper_a_claim}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground italic mt-2 pl-3 border-l-2 border-border opacity-50">
+            No claim extracted
           </p>
         )}
       </div>
@@ -141,9 +145,13 @@ export function ContradictionCard({ pair, isHighlighted, id }: ContradictionCard
         <p className="text-xs text-muted-foreground mt-0.5">
           {formatAuthors(pair.paper_b.authors)} · {pair.paper_b.year || 'N/A'}
         </p>
-        {pair.paper_b_claim && (
+        {pair.paper_b_claim ? (
           <p className="font-serif text-sm text-muted-foreground italic mt-2 pl-3 border-l-2 border-border">
             {pair.paper_b_claim}
+          </p>
+        ) : (
+          <p className="text-sm text-muted-foreground italic mt-2 pl-3 border-l-2 border-border opacity-50">
+            No claim extracted
           </p>
         )}
       </div>

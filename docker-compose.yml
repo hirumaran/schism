@@ -12,7 +12,6 @@ services:
       - ./data:/app/data
     depends_on:
       - schism-qdrant
-      - schism-redis
 
   schism-qdrant:
     image: qdrant/qdrant:v1.15.4
@@ -21,10 +20,17 @@ services:
     volumes:
       - qdrant_data:/qdrant/storage
 
-  schism-redis:
-    image: redis:7-alpine
+  schism-web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
     ports:
-      - "6379:6379"
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=/api
+      - SCHISM_API_PROXY_TARGET=http://schism-api:8000
+    depends_on:
+      - schism-api
 
 volumes:
   qdrant_data:

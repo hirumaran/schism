@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { ModeToggle } from '@/components/input/mode-toggle'
 import { QueryInput } from '@/components/input/query-input'
@@ -10,7 +10,7 @@ import { SourcePicker } from '@/components/input/source-picker'
 import { ProviderBadge } from '@/components/input/provider-badge'
 import { RecentJobs } from '@/components/input/recent-jobs'
 import { useStore } from '@/lib/store'
-import { analyzeQuery, analyzePaper, ApiError } from '@/lib/api'
+import { analyzeQuery, analyzePaper, healthCheck, ApiError } from '@/lib/api'
 
 type Mode = 'query' | 'paper'
 
@@ -27,6 +27,13 @@ export default function InputPage() {
   const [maxResults, setMaxResults] = useState(50)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [backendOnline, setBackendOnline] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    healthCheck()
+      .then(() => setBackendOnline(true))
+      .catch(() => setBackendOnline(false))
+  }, [])
 
   const handleSubmit = async () => {
     setError(null)
@@ -111,6 +118,22 @@ export default function InputPage() {
         </div>
 
         <ModeToggle mode={mode} onModeChange={setMode} />
+
+        {backendOnline === false && (
+          <div style={{
+            background: 'var(--color-background-warning, #fef3c7)',
+            border: '1px solid var(--color-border-warning, #f59e0b)',
+            color: 'var(--color-text-warning, #92400e)',
+            padding: '12px 16px',
+            borderRadius: '8px',
+            fontSize: '14px',
+            marginBottom: '24px',
+            lineHeight: '1.5'
+          }}>
+            Cannot reach the Schism backend at localhost:8000.
+            Make sure the backend is running before analyzing.
+          </div>
+        )}
 
         <div className="mt-8 space-y-4">
           {mode === 'query' ? (

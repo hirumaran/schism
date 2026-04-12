@@ -25,7 +25,13 @@ export function StatBar({ report, totalResults, paperCount }: StatBarProps) {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `schism-results-${report.id}.${format}`
+      const querySlug = (report.query ?? 'export')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/^-+|-+$/g, '')
+        .slice(0, 50)
+      const date = new Date().toISOString().slice(0, 10)
+      a.download = `schism-${querySlug}-${date}.${format}`
       a.click()
       URL.revokeObjectURL(url)
     } catch (err) {
