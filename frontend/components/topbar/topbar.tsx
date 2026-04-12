@@ -2,17 +2,10 @@
 
 import Link from 'next/link'
 import { useStore } from '@/lib/store'
-import { useTheme } from 'next-themes'
-import { Switch } from '@/components/ui/switch'
-import { Moon, Sun } from 'lucide-react'
+import { ThemeToggle } from './theme-toggle'
 
 export function Topbar() {
   const { setSettingsOpen, setDocsOpen } = useStore()
-  const { theme, setTheme } = useTheme()
-
-  const toggleTheme = () => {
-    setTheme(theme === 'dark' ? 'light' : 'dark')
-  }
 
   const getStatusDot = () => {
     return 'bg-green-500'
@@ -27,15 +20,7 @@ export function Topbar() {
 
         <div className="flex items-center gap-4">
           {/* Theme Toggle */}
-          <div className="flex items-center gap-2">
-            <Sun className="w-4 h-4 text-muted-foreground" />
-            <Switch
-              checked={theme === 'dark'}
-              onCheckedChange={toggleTheme}
-              aria-label="Toggle dark mode"
-            />
-            <Moon className="w-4 h-4 text-muted-foreground" />
-          </div>
+          <ThemeToggle />
 
           <button
             onClick={() => setDocsOpen(true)}
