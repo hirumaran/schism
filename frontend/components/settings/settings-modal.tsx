@@ -19,6 +19,64 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   mock: 'Mock',
 }
 
+function sortModels(models: string[]) {
+  return [...new Set(models)].sort((a, b) => a.localeCompare(b))
+}
+
+function getSelectedModel(models: string[], currentModel: string) {
+  return models.includes(currentModel) ? currentModel : (models[0] ?? currentModel)
+}
+
+async function fetchAnthropicModels(apiKey: string) {
+  const response = await fetch('https://api.anthropic.com/v1/models', {
+    headers: {
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch Anthropic models')
+  }
+
+  const data = await response.json()
+  if (!Array.isArray(data?.models)) {
+    throw new Error('Invalid Anthropic models response')
+  }
+
+  return sortModels(
+    data.models
+      .map((model: { id?: string }) => model.id)
+      .filter((id: string | undefined): id is string => typeof id === 'string' && id.startsWith('claude-'))
+  )
+}
+
+async function fetchOpenAIModels(apiKey: string) {
+  const response = await fetch('https://api.openai.com/v1/models', {
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  })
+
+  if (!response.ok) {
+    throw new Error('Failed to fetch OpenAI models')
+  }
+
+  const data = await response.json()
+  if (!Array.isArray(data?.data)) {
+    throw new Error('Invalid OpenAI models response')
+  }
+
+  return sortModels(
+    data.data
+      .map((model: { id?: string }) => model.id)
+      .filter(
+        (id: string | undefined): id is string =>
+          typeof id === 'string' && (id.includes('gpt-4') || id.includes('gpt-3.5'))
+      )
+  )
+}
+
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, addToast } = useStore()
   const [activeTab, setActiveTab] = useState<Provider>(settings.provider)
@@ -35,6 +93,10 @@ export function SettingsModal() {
       setLocalSettings(settings)
       setActiveTab(settings.provider)
       setValidationResult(null)
+      setAnthropicModels([])
+      setOpenaiModels([])
+      setOllamaModels([])
+      setFetchingModels(false)
     }
   }, [settingsOpen, settings])
 
@@ -55,6 +117,7 @@ export function SettingsModal() {
     setAnthropicModels([])
     setOpenaiModels([])
     setOllamaModels([])
+    setFetchingModels(false)
   }
 
   const handleValidate = async () => {
@@ -67,33 +130,41 @@ export function SettingsModal() {
         setFetchingModels(true)
         try {
           if (activeTab === 'anthropic') {
-            const res = await fetch('https://api.anthropic.com/v1/models', {
-              headers: { 'x-api-key': localSettings.apiKey, 'anthropic-version': '2023-06-01' },
-            })
-            if (res.ok) {
-              const data = await res.json()
-              const ids: string[] = (data.models ?? data.data ?? []).map((m: { id: string }) => m.id)
-              setAnthropicModels(ids.filter((id) => id.startsWith('claude-')).sort())
-            } else {
-              setAnthropicModels(ANTHROPIC_FALLBACK_MODELS)
+            const models = await fetchAnthropicModels(localSettings.apiKey)
+            setAnthropicModels(models)
+            if (models.length > 0) {
+              setLocalSettings((s) => ({
+                ...s,
+                anthropicModel: getSelectedModel(models, s.anthropicModel),
+              }))
             }
           } else if (activeTab === 'openai') {
-            const res = await fetch('https://api.openai.com/v1/models', {
-              headers: { Authorization: `Bearer ${localSettings.apiKey}` },
-            })
-            if (res.ok) {
-              const data = await res.json()
-              const ids: string[] = (data.data ?? []).map((m: { id: string }) => m.id)
-              setOpenaiModels(ids.filter((id) => id.includes('gpt-4') || id.includes('gpt-3.5')).sort())
-            } else {
-              setOpenaiModels(OPENAI_FALLBACK_MODELS)
+            const models = await fetchOpenAIModels(localSettings.apiKey)
+            setOpenaiModels(models)
+            if (models.length > 0) {
+              setLocalSettings((s) => ({
+                ...s,
+                openaiModel: getSelectedModel(models, s.openaiModel),
+              }))
             }
           }
         } catch {
-          if (activeTab === 'anthropic') setAnthropicModels(ANTHROPIC_FALLBACK_MODELS)
-          else if (activeTab === 'openai') setOpenaiModels(OPENAI_FALLBACK_MODELS)
+          if (activeTab === 'anthropic') {
+            setAnthropicModels(ANTHROPIC_FALLBACK_MODELS)
+            setLocalSettings((s) => ({
+              ...s,
+              anthropicModel: getSelectedModel(ANTHROPIC_FALLBACK_MODELS, s.anthropicModel),
+            }))
+          } else if (activeTab === 'openai') {
+            setOpenaiModels(OPENAI_FALLBACK_MODELS)
+            setLocalSettings((s) => ({
+              ...s,
+              openaiModel: getSelectedModel(OPENAI_FALLBACK_MODELS, s.openaiModel),
+            }))
+          }
+        } finally {
+          setFetchingModels(false)
         }
-        setFetchingModels(false)
       } else {
         setValidationResult('invalid')
       }
@@ -109,8 +180,15 @@ export function SettingsModal() {
     try {
       const result = await testOllamaConnection(localSettings.baseUrl)
       setOllamaModels(result.models)
+      if (result.models.length > 0) {
+        setLocalSettings((s) => ({
+          ...s,
+          ollamaModel: getSelectedModel(result.models, s.ollamaModel),
+        }))
+      }
       setValidationResult('valid')
     } catch {
+      setOllamaModels([])
       setValidationResult('error')
     }
     setValidating(false)
@@ -177,7 +255,11 @@ export function SettingsModal() {
                     placeholder="sk-ant-..."
                     value={localSettings.apiKey}
                     onChange={(e) =>
-                      setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                      {
+                        setValidationResult(null)
+                        setAnthropicModels([])
+                        setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                      }
                     }
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
@@ -216,7 +298,7 @@ export function SettingsModal() {
                         className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Validate your key to see available models
+                        Validate your key to see available models.
                       </p>
                     </>
                   )}
@@ -226,7 +308,7 @@ export function SettingsModal() {
                   disabled={validating || fetchingModels || !localSettings.apiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  {validating ? 'Checking...' : fetchingModels ? 'Fetching models...' : 'Check backend connection'}
+                  {fetchingModels ? 'Fetching models...' : validating ? 'Checking...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
                   <p className="text-sm text-green-600">Backend is reachable</p>
@@ -254,7 +336,11 @@ export function SettingsModal() {
                     placeholder="sk-..."
                     value={localSettings.apiKey}
                     onChange={(e) =>
-                      setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                      {
+                        setValidationResult(null)
+                        setOpenaiModels([])
+                        setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                      }
                     }
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
@@ -293,7 +379,7 @@ export function SettingsModal() {
                         className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                       />
                       <p className="text-xs text-muted-foreground mt-1">
-                        Validate your key to see available models
+                        Validate your key to see available models.
                       </p>
                     </>
                   )}
@@ -303,7 +389,7 @@ export function SettingsModal() {
                   disabled={validating || fetchingModels || !localSettings.apiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
-                  {validating ? 'Checking...' : fetchingModels ? 'Fetching models...' : 'Check backend connection'}
+                  {fetchingModels ? 'Fetching models...' : validating ? 'Checking...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
                   <p className="text-sm text-green-600">Backend is reachable</p>
@@ -331,7 +417,11 @@ export function SettingsModal() {
                     placeholder="http://localhost:11434"
                     value={localSettings.baseUrl}
                     onChange={(e) =>
-                      setLocalSettings((s) => ({ ...s, baseUrl: e.target.value }))
+                      {
+                        setValidationResult(null)
+                        setOllamaModels([])
+                        setLocalSettings((s) => ({ ...s, baseUrl: e.target.value }))
+                      }
                     }
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
