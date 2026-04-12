@@ -48,9 +48,7 @@ class EmbeddingService:
         for i, paper in enumerate(papers):
             if paper.embedding_id and vector_store:
                 try:
-                    # VectorStore.get_vector is synchronous, run in executor
-                    loop = asyncio.get_running_loop()
-                    cached = await loop.run_in_executor(None, vector_store.get_vector, paper.embedding_id)
+                    cached = await vector_store.get_vector(paper.embedding_id)
                     if cached is not None:
                         embeddings.append((i, cached))
                         continue
