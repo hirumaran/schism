@@ -23,20 +23,30 @@ export async function validateKey(settings: Settings, provider?: Provider): Prom
 
 export async function testOllamaConnection(baseUrl: string, apiKey?: string): Promise<{ models: string[] }> {
   const normalized = baseUrl.replace(/\/$/, '')
-  const response = await fetch(`${normalized}/api/tags`, {
-    headers: apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined,
-  })
+  const trimmedKey = apiKey?.trim()
 
-  if (!response.ok) {
-    if (apiKey && (response.status === 401 || response.status === 403)) {
-      throw new ApiError(response.status, 'Invalid Ollama API key')
+  try {
+    return await apiRequest<{ models: string[] }>('/ollama/tags', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        base_url: normalized,
+        api_key: trimmedKey || undefined,
+      }),
+    })
+  } catch (error) {
+    if (error instanceof ApiError) {
+      if (trimmedKey && (error.status === 401 || error.status === 403)) {
+        throw new ApiError(error.status, 'Invalid Ollama API key')
+      }
+      throw new ApiError(
+        error.status,
+        trimmedKey ? 'Cannot reach Ollama Cloud' : 'Cannot connect to Ollama'
+      )
     }
-    throw new ApiError(
-      response.status,
-      apiKey ? 'Cannot reach Ollama Cloud' : 'Cannot connect to Ollama'
-    )
-  }
 
-  const data = await response.json()
-  return { models: data.models?.map((model: { name: string }) => model.name) ?? [] }
+    throw new ApiError(0, trimmedKey ? 'Cannot reach Ollama Cloud' : 'Cannot connect to Ollama')
+  }
 }

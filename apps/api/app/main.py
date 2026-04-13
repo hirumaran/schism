@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import get_settings
 from app.dependencies import get_analysis_service, get_repository, get_vector_store
 from app.logging_utils import configure_logging
-from app.routers import analyze, export, health, jobs, search
+from app.routers import analyze, export, health, jobs, ollama, search
 
 settings = get_settings()
 configure_logging(settings.log_level, settings.log_format)
@@ -53,6 +53,7 @@ app.include_router(search.router, prefix=settings.api_prefix)
 app.include_router(analyze.router, prefix=settings.api_prefix)
 app.include_router(jobs.router, prefix=settings.api_prefix)
 app.include_router(export.router, prefix=settings.api_prefix)
+app.include_router(ollama.router, prefix=settings.api_prefix)
 
 
 @app.get("/")

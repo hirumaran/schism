@@ -313,7 +313,7 @@ function SetupTab() {
     },
     {
       key: 'no-results',
-      q: 'No contradictions found',
+      q: 'No results found',
       a: 'Try a more specific query, increase max_results, or add more sources. The contradiction threshold is 0.6 - pairs below this score are filtered out.',
     },
     {

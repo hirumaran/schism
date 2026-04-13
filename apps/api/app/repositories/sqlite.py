@@ -8,7 +8,11 @@ from threading import Lock
 from typing import Any
 
 from app.models.claim import PaperClaim
-from app.models.contradiction import ContradictionMode, ContradictionPair, build_pair_key
+from app.models.contradiction import (
+    ContradictionMode,
+    ContradictionPair,
+    build_pair_key,
+)
 from app.models.paper import Paper, build_query_cache_key
 from app.models.report import AnalysisJob, AnalysisReport, JobStatus, SearchRun
 
@@ -61,6 +65,8 @@ class SQLiteRepository:
                         raw_json TEXT NOT NULL,
                         created_at TEXT NOT NULL
                     );
+
+                    CREATE INDEX IF NOT EXISTS idx_search_runs_query ON search_runs(query);
 
                     CREATE TABLE IF NOT EXISTS search_run_papers (
                         search_run_id TEXT NOT NULL,
@@ -249,7 +255,24 @@ class SQLiteRepository:
                 )
                 connection.commit()
 
-    def get_query_cache(self, query: str, source: str, freshness_hours: int) -> list[Paper] | None:
+    def get_popular_queries(self, prefix: str, limit: int) -> list[dict]:
+        with self._lock:
+            with self._connect() as connection:
+                if not prefix:
+                    rows = connection.execute(
+                        "SELECT LOWER(query) as query, COUNT(*) as count FROM search_runs WHERE TRIM(query) != '' GROUP BY LOWER(query) ORDER BY count DESC LIMIT ?",
+                        (limit,),
+                    ).fetchall()
+                else:
+                    rows = connection.execute(
+                        "SELECT LOWER(query) as query, COUNT(*) as count FROM search_runs WHERE LOWER(query) LIKE ? AND TRIM(query) != '' GROUP BY LOWER(query) ORDER BY count DESC LIMIT ?",
+                        (f"%{prefix.lower()}%", limit),
+                    ).fetchall()
+        return [{"query": row["query"], "count": row["count"]} for row in rows]
+
+    def get_query_cache(
+        self, query: str, source: str, freshness_hours: int
+    ) -> list[Paper] | None:
         key = build_query_cache_key(query, source)
         cutoff = datetime.now(timezone.utc) - timedelta(hours=freshness_hours)
         with self._lock:
@@ -329,7 +352,9 @@ class SQLiteRepository:
                 )
                 connection.commit()
 
-    def get_claims(self, paper_ids: list[str], provider: str, model: str | None) -> dict[str, PaperClaim]:
+    def get_claims(
+        self, paper_ids: list[str], provider: str, model: str | None
+    ) -> dict[str, PaperClaim]:
         return self.get_best_claims(paper_ids)
 
     def get_best_claims(self, paper_ids: list[str]) -> dict[str, PaperClaim]:
@@ -356,7 +381,9 @@ class SQLiteRepository:
                 best[row["paper_id"]] = claim
         return best
 
-    def get_cached_contradiction(self, paper_a_id: str, paper_b_id: str) -> ContradictionPair | None:
+    def get_cached_contradiction(
+        self, paper_a_id: str, paper_b_id: str
+    ) -> ContradictionPair | None:
         pair_key = build_pair_key(paper_a_id, paper_b_id)
         with self._lock:
             with self._connect() as connection:
@@ -373,8 +400,15 @@ class SQLiteRepository:
             return None
         return ContradictionPair.model_validate_json(row["raw_json"])
 
-    def save_contradiction(self, contradiction: ContradictionPair, job_id: str | None = None, kind: str = "contradiction") -> bool:
-        pair_key = contradiction.pair_key or build_pair_key(contradiction.paper_a_id, contradiction.paper_b_id)
+    def save_contradiction(
+        self,
+        contradiction: ContradictionPair,
+        job_id: str | None = None,
+        kind: str = "contradiction",
+    ) -> bool:
+        pair_key = contradiction.pair_key or build_pair_key(
+            contradiction.paper_a_id, contradiction.paper_b_id
+        )
         contradiction.pair_key = pair_key
 
         with self._lock:
@@ -554,8 +588,12 @@ class SQLiteRepository:
         job.updated_at = datetime.now(timezone.utc)
         self.create_job(job)
 
-    def get_recent_completed_job(self, normalized_query: str, within_hours: int) -> AnalysisJob | None:
-        cutoff = (datetime.now(timezone.utc) - timedelta(hours=within_hours)).isoformat()
+    def get_recent_completed_job(
+        self, normalized_query: str, within_hours: int
+    ) -> AnalysisJob | None:
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(hours=within_hours)
+        ).isoformat()
         with self._lock:
             with self._connect() as connection:
                 rows = connection.execute(
@@ -574,7 +612,9 @@ class SQLiteRepository:
                 return job
         return None
 
-    def get_recent_active_job(self, normalized_query: str, mode: ContradictionMode) -> AnalysisJob | None:
+    def get_recent_active_job(
+        self, normalized_query: str, mode: ContradictionMode
+    ) -> AnalysisJob | None:
         with self._lock:
             with self._connect() as connection:
                 rows = connection.execute(
@@ -624,7 +664,9 @@ class SQLiteRepository:
                 ).fetchall()
         return [Paper.model_validate_json(row["raw_json"]) for row in rows]
 
-    def list_job_contradictions(self, job_id: str, kind: str | None = None) -> list[ContradictionPair]:
+    def list_job_contradictions(
+        self, job_id: str, kind: str | None = None
+    ) -> list[ContradictionPair]:
         query = """
             SELECT c.raw_json
             FROM job_contradictions jc
@@ -642,7 +684,9 @@ class SQLiteRepository:
         return [ContradictionPair.model_validate_json(row["raw_json"]) for row in rows]
 
     def expire_stale_running_jobs(self, timeout_minutes: int) -> list[str]:
-        cutoff = (datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)).isoformat()
+        cutoff = (
+            datetime.now(timezone.utc) - timedelta(minutes=timeout_minutes)
+        ).isoformat()
         expired_ids: list[str] = []
         with self._lock:
             with self._connect() as connection:
@@ -701,7 +745,9 @@ class SQLiteRepository:
                 ).fetchall()
 
                 connection.execute("DELETE FROM reports WHERE id = ?", (job_id,))
-                connection.execute("DELETE FROM job_contradictions WHERE job_id = ?", (job_id,))
+                connection.execute(
+                    "DELETE FROM job_contradictions WHERE job_id = ?", (job_id,)
+                )
                 connection.execute("DELETE FROM job_papers WHERE job_id = ?", (job_id,))
                 connection.execute("DELETE FROM analysis_jobs WHERE id = ?", (job_id,))
 
@@ -711,7 +757,10 @@ class SQLiteRepository:
                         (pair_row["pair_key"],),
                     ).fetchone()["count"]
                     if reference_count == 0:
-                        connection.execute("DELETE FROM contradictions WHERE pair_key = ?", (pair_row["pair_key"],))
+                        connection.execute(
+                            "DELETE FROM contradictions WHERE pair_key = ?",
+                            (pair_row["pair_key"],),
+                        )
 
                 for paper_row in paper_rows:
                     paper_id = paper_row["paper_id"]
@@ -724,8 +773,12 @@ class SQLiteRepository:
                         (paper_id,),
                     ).fetchone()["count"]
                     if job_count == 0 and search_count == 0:
-                        connection.execute("DELETE FROM claims WHERE paper_id = ?", (paper_id,))
-                        connection.execute("DELETE FROM papers WHERE id = ?", (paper_id,))
+                        connection.execute(
+                            "DELETE FROM claims WHERE paper_id = ?", (paper_id,)
+                        )
+                        connection.execute(
+                            "DELETE FROM papers WHERE id = ?", (paper_id,)
+                        )
                 connection.commit()
         return True
 
@@ -735,9 +788,16 @@ class SQLiteRepository:
             return None
         claim_tokens = job.extracted_claim_count * 300
         contradiction_tokens = job.scored_pair_count * 400
-        eligible_pairs = int(job.metadata.get("total_eligible_pairs", job.scored_pair_count + job.cached_pair_count) or 0)
+        eligible_pairs = int(
+            job.metadata.get(
+                "total_eligible_pairs", job.scored_pair_count + job.cached_pair_count
+            )
+            or 0
+        )
         denominator = eligible_pairs if eligible_pairs > 0 else 1
-        cache_hit_rate = round(job.cached_pair_count / denominator, 4) if eligible_pairs else 0.0
+        cache_hit_rate = (
+            round(job.cached_pair_count / denominator, 4) if eligible_pairs else 0.0
+        )
         return {
             "job_id": job.id,
             "query": job.query,

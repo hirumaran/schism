@@ -56,6 +56,28 @@ class InputPaperMetadata(BaseModel):
     search_queries_used: list[str] = Field(default_factory=list)
 
 
+
+class CoreConcept(BaseModel):
+    name: str
+    plain_explanation: str
+    technical_explanation: str
+    why_it_matters: str
+
+class SearchQueries(BaseModel):
+    youtube: list[str]
+    academic: list[str]
+    general: list[str]
+
+class PaperBreakdown(BaseModel):
+    one_line_summary: str
+    high_level_explanation: str
+    core_concepts: list[CoreConcept]
+    methodology_summary: str
+    key_findings: list[str]
+    limitations: list[str]
+    related_fields: list[str]
+    search_queries: SearchQueries
+
 class AnalysisJob(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -76,6 +98,8 @@ class AnalysisJob(BaseModel):
     contradiction_count: int = 0
     cached_pair_count: int = 0
     has_contradictions: bool = False
+    recommendations_cache: dict[str, object] | None = None
+    paper_breakdown: PaperBreakdown | None = None
     error: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
@@ -110,6 +134,8 @@ class AnalysisReport(BaseModel):
     status: JobStatus = JobStatus.done
     contradiction_threshold: float
     has_contradictions: bool = False
+    recommendations_cache: dict[str, object] | None = None
+    paper_breakdown: PaperBreakdown | None = None
     papers: list[Paper] = Field(default_factory=list)
     claims: list[PaperClaim] = Field(default_factory=list)
     clusters: list[ClaimCluster] = Field(default_factory=list)

@@ -111,8 +111,10 @@ class ContradictionEngine:
                     request=request,
                     context=context,
                     search_run=search_run,
+                    paper_breakdown=paper_breakdown,
                     warnings=[*warnings, "No papers were available for analysis."],
                 )
+                analysis_job.paper_breakdown = paper_breakdown
                 await self._complete_job(analysis_job, report, has_contradictions=False)
                 return report
 
@@ -157,6 +159,17 @@ class ContradictionEngine:
                 and claim.quality >= request.min_claim_quality
             ]
             if len(eligible_claims) < 2:
+                paper_breakdown = None
+                if papers:
+                    try:
+                        paper_breakdown = (
+                            await self.llm_client.generate_paper_breakdown(
+                                papers[0], context
+                            )
+                        )
+                    except Exception as exc:
+                        logger.warning("breakdown_failed", extra={"error": str(exc)})
+
                 report = AnalysisReport(
                     id=analysis_job.id,
                     job_id=analysis_job.id,
@@ -169,6 +182,7 @@ class ContradictionEngine:
                     contradiction_threshold=request.contradiction_threshold,
                     papers=papers,
                     claims=claims,
+                    paper_breakdown=paper_breakdown,
                     warnings=[
                         *warnings,
                         "Not enough high-quality claims were extracted for contradiction analysis.",
@@ -176,6 +190,7 @@ class ContradictionEngine:
                     created_at=analysis_job.created_at,
                     completed_at=datetime.now(timezone.utc),
                 )
+                analysis_job.paper_breakdown = paper_breakdown
                 await self._complete_job(analysis_job, report, has_contradictions=False)
                 return report
 
@@ -231,10 +246,19 @@ class ContradictionEngine:
                 filtered_pair_count=score_summary["filtered_pairs"],
                 scored_pair_count=score_summary["llm_scored_pairs"],
                 metadata=metadata,
+                paper_breakdown=paper_breakdown,
                 cached_pair_count=score_summary["cached_pairs"],
                 has_contradictions=has_contradictions,
             )
             self._apply_failover_meta(analysis_job, context)
+
+            paper_breakdown = None
+            try:
+                paper_breakdown = await self.llm_client.generate_paper_breakdown(
+                    input_paper, context
+                )
+            except Exception as exc:
+                logger.warning("breakdown_failed", extra={"error": str(exc)})
 
             report = AnalysisReport(
                 id=analysis_job.id,
@@ -254,6 +278,7 @@ class ContradictionEngine:
                 methodological_differences=methodological,
                 warnings=warnings,
                 metadata=metadata,
+                paper_breakdown=paper_breakdown,
                 created_at=analysis_job.created_at,
                 completed_at=datetime.now(timezone.utc),
             )
@@ -268,6 +293,7 @@ class ContradictionEngine:
                 request=request,
                 context=context,
                 search_run=search_run,
+                paper_breakdown=paper_breakdown,
                 warnings=[*warnings, str(exc)],
             )
             status = (
@@ -289,6 +315,7 @@ class ContradictionEngine:
                 request=None,
                 context=context,
                 search_run=search_run,
+                paper_breakdown=paper_breakdown,
                 warnings=[*warnings, str(exc)],
                 mode=ContradictionMode.paper_vs_corpus,
                 input_paper=InputPaperMetadata(
@@ -397,6 +424,7 @@ class ContradictionEngine:
                     request=None,
                     context=context,
                     search_run=search_run,
+                    paper_breakdown=paper_breakdown,
                     warnings=[
                         *warnings,
                         "No searchable claims were extracted from the input paper.",
@@ -405,6 +433,7 @@ class ContradictionEngine:
                     input_paper=input_paper_metadata,
                 )
                 report.papers = [input_paper]
+                analysis_job.paper_breakdown = paper_breakdown
                 await self._complete_job(analysis_job, report, has_contradictions=False)
                 return report
 
@@ -419,6 +448,7 @@ class ContradictionEngine:
                     request=None,
                     context=context,
                     search_run=search_run,
+                    paper_breakdown=paper_breakdown,
                     warnings=[*warnings, "No papers were available for analysis."],
                     mode=ContradictionMode.paper_vs_corpus,
                     input_paper=input_paper_metadata,
@@ -427,6 +457,7 @@ class ContradictionEngine:
                 report.claims = self._input_claims_as_paper_claims(
                     input_paper.id, context, input_claims
                 )
+                analysis_job.paper_breakdown = paper_breakdown
                 await self._complete_job(analysis_job, report, has_contradictions=False)
                 return report
 
@@ -519,10 +550,19 @@ class ContradictionEngine:
                 filtered_pair_count=score_summary["filtered_pairs"],
                 scored_pair_count=score_summary["llm_scored_pairs"],
                 metadata=metadata,
+                paper_breakdown=paper_breakdown,
                 cached_pair_count=score_summary["cached_pairs"],
                 has_contradictions=has_contradictions,
             )
             self._apply_failover_meta(analysis_job, context)
+
+            paper_breakdown = None
+            try:
+                paper_breakdown = await self.llm_client.generate_paper_breakdown(
+                    input_paper, context
+                )
+            except Exception as exc:
+                logger.warning("breakdown_failed", extra={"error": str(exc)})
 
             report = AnalysisReport(
                 id=analysis_job.id,
@@ -547,6 +587,7 @@ class ContradictionEngine:
                 methodological_differences=methodological,
                 warnings=warnings,
                 metadata=metadata,
+                paper_breakdown=paper_breakdown,
                 input_paper=input_paper_metadata,
                 created_at=analysis_job.created_at,
                 completed_at=datetime.now(timezone.utc),
@@ -606,7 +647,13 @@ class ContradictionEngine:
         max_results: int,
     ) -> tuple[list[Paper], SearchRun | None, IngestionResult]:
         if not input_claims:
-            return [], None, IngestionResult(papers=[], warnings=[])
+            return (
+                [],
+                None,
+                IngestionResult(
+                    papers=[], paper_breakdown=paper_breakdown, warnings=[]
+                ),
+            )
 
         results = await asyncio.gather(
             *[
@@ -965,6 +1012,8 @@ class ContradictionEngine:
             if cached is not None:
                 cached_pairs += 1
                 cached.cluster_id = cluster_id
+                cached.paper_a = paper_a
+                cached.paper_b = paper_b
                 return self._apply_year_penalty(cached, paper_a, paper_b)
 
             async with semaphore:
@@ -1205,6 +1254,8 @@ class ContradictionEngine:
                 key_difference="population mismatch",
                 paper_a_claim=claim_a.claim,
                 paper_b_claim=claim_b.claim,
+                paper_a=paper_a,
+                paper_b=paper_b,
                 raw={"mode": "prefilter"},
             )
             return {"action": "methodological", "pair": pair}
@@ -1256,6 +1307,8 @@ class ContradictionEngine:
                 key_difference="population mismatch",
                 paper_a_claim=input_claim.claim,
                 paper_b_claim=fetched_claim.claim,
+                paper_a=input_paper,
+                paper_b=fetched_paper,
                 raw={"mode": "prefilter"},
             )
             return {"action": "methodological", "pair": pair}
@@ -1339,9 +1392,7 @@ class ContradictionEngine:
         if latest.status == JobStatus.failed and latest.error == "job_timeout_exceeded":
             raise JobAbortedError("job_timeout_exceeded")
 
-    def _apply_failover_meta(
-        self, job: AnalysisJob, context: ProviderContext
-    ) -> None:
+    def _apply_failover_meta(self, job: AnalysisJob, context: ProviderContext) -> None:
         """Apply failover metadata from the ProviderContext to the AnalysisJob if any LLM call triggered failover."""
         if context.failover_meta is None:
             return

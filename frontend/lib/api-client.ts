@@ -235,3 +235,15 @@ export async function apiRequest<T>(
 
   return response.json() as Promise<T>
 }
+
+export async function fetchPopularQueries(query: string, limit: number = 5): Promise<string[]> {
+  try {
+    const res = await fetch(`/api/search/autocomplete?q=${encodeURIComponent(query)}&limit=${limit}`)
+    if (!res.ok) return []
+    const data = await res.json()
+    return data.suggestions || []
+  } catch (error) {
+    return []
+  }
+}
+

@@ -10,6 +10,8 @@ import { StatBar } from '@/components/results/stat-bar'
 import { FilterBar } from '@/components/results/filter-bar'
 import { ClaimsSidebar } from '@/components/results/claims-sidebar'
 import { ContradictionCard } from '@/components/results/contradiction-card'
+import { PaperBreakdown } from '@/components/results/paper-breakdown'
+import { Recommendations } from '@/components/results/recommendations'
 import type { ContradictionType, AnalysisMode, ContradictionPair } from '@/lib/types'
 
 export default function ReportsPage() {
@@ -19,7 +21,7 @@ export default function ReportsPage() {
 
   const [typeFilter, setTypeFilter] = useState<ContradictionType | 'all'>('all')
   const [modeFilter, setModeFilter] = useState<AnalysisMode | 'all'>('all')
-  const [activeClaimId, setActiveClaimId] = useState<string | null>(null)
+  const [activePairId, setActivePairId] = useState<string | null>(null)
   const [allResults, setAllResults] = useState<ContradictionPair[]>([])
   const [total, setTotal] = useState(0)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -35,6 +37,9 @@ export default function ReportsPage() {
     if (initialResults) {
       setAllResults(initialResults.results)
       setTotal(initialResults.total)
+      if (initialResults.results.length > 0 && !activePairId) {
+        setActivePairId(initialResults.results[0].pair_key)
+      }
     }
   }, [initialResults])
 
@@ -63,17 +68,13 @@ export default function ReportsPage() {
     return true
   })
 
-  const handleClaimClick = (paperId: string) => {
-    setActiveClaimId(paperId)
-    // Find the first card that contains this paper
-    const cardIndex = filteredResults.findIndex(
-      (pair) => pair.paper_a.id === paperId || pair.paper_b.id === paperId
-    )
-    if (cardIndex !== -1) {
-      const element = document.getElementById(`card-${cardIndex}`)
-      element?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  // Ensure active pair is valid after filtering
+  useEffect(() => {
+    if (filteredResults.length > 0) {
+      const activeExists = filteredResults.some(p => p.pair_key === activePairId)
+      if (!activeExists) setActivePairId(filteredResults[0].pair_key)
     }
-  }
+  }, [filteredResults, activePairId])
 
   const clearFilters = () => {
     setTypeFilter('all')
@@ -135,80 +136,104 @@ export default function ReportsPage() {
     )
   }
 
-  if (allResults.length === 0) {
-    return (
-      <div className="pt-16">
-        <div className="p-6 max-w-lg mx-auto text-center">
-          <h2 className="font-serif text-2xl mb-2">No contradictions found</h2>
-          <p className="text-muted-foreground mb-4">
-            The analyzed papers did not contain significant contradictions above the threshold.
-          </p>
-          <Link
-            href="/"
-            className="inline-block px-4 py-2 bg-foreground text-background rounded-md hover:bg-foreground/90"
-          >
-            Try another search
-          </Link>
-        </div>
-      </div>
-    )
+  const activePair = filteredResults.find(p => p.pair_key === activePairId) || filteredResults[0]
+
+  const searchQueries = []
+  if (report.paper_breakdown?.search_queries) {
+    searchQueries.push(...report.paper_breakdown.search_queries.youtube)
+    searchQueries.push(...report.paper_breakdown.search_queries.academic)
+    searchQueries.push(...report.paper_breakdown.search_queries.general)
   }
 
   return (
-    <div className="pt-14">
+    <div className="pt-14 min-h-screen bg-background">
       <StatBar report={report} totalResults={total} paperCount={paperCount} />
-      <FilterBar
-        typeFilter={typeFilter}
-        modeFilter={modeFilter}
-        onTypeChange={setTypeFilter}
-        onModeChange={setModeFilter}
-        hasPaperMode={hasPaperMode}
-      />
-
-      <div className="flex">
-        <ClaimsSidebar
-          results={filteredResults}
-          activeClaimId={activeClaimId}
-          onClaimClick={handleClaimClick}
+      
+      {allResults.length > 0 && (
+        <FilterBar
+          typeFilter={typeFilter}
+          modeFilter={modeFilter}
+          onTypeChange={setTypeFilter}
+          onModeChange={setModeFilter}
+          hasPaperMode={hasPaperMode}
         />
+      )}
 
-        <div className="flex-1 p-6 overflow-y-auto">
-          {filteredResults.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-muted-foreground mb-3">No contradictions match this filter.</p>
-              <button
-                onClick={clearFilters}
-                className="text-sm text-foreground hover:underline"
-              >
-                Clear filters
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4 max-w-3xl">
-              {filteredResults.map((pair, i) => (
-                <ContradictionCard
-                  key={pair.pair_key || `${pair.paper_a.id}-${pair.paper_b.id}`}
-                  id={`card-${i}`}
-                  pair={pair}
-                  isHighlighted={
-                    activeClaimId === pair.paper_a.id || activeClaimId === pair.paper_b.id
-                  }
-                />
-              ))}
+      {allResults.length > 0 ? (
+        <div className="flex flex-col md:flex-row relative">
+          <ClaimsSidebar
+            results={filteredResults}
+            activePairId={activePairId}
+            onPairClick={setActivePairId}
+          />
 
-              {allResults.length < total && (
+          <div className="flex-1 max-w-[1200px] mx-auto w-full">
+            {filteredResults.length === 0 ? (
+              <div className="text-center py-20">
+                <p className="text-muted-foreground mb-4">No contradictions match this filter.</p>
                 <button
-                  onClick={loadMore}
-                  disabled={loadingMore}
-                  className="w-full py-3 text-sm text-muted-foreground border border-border rounded-md hover:bg-accent disabled:opacity-50"
+                  onClick={clearFilters}
+                  className="px-4 py-2 text-sm font-medium text-primary bg-primary/10 hover:bg-primary/20 rounded-md transition-colors"
                 >
-                  {loadingMore ? 'Loading...' : `Load more (${allResults.length} of ${total})`}
+                  Clear filters
                 </button>
-              )}
+              </div>
+            ) : (
+              <div className="p-4 md:p-8">
+                {activePair && <ContradictionCard pair={activePair} />}
+                
+                {allResults.length < total && (
+                  <div className="mt-8 flex justify-center">
+                    <button
+                      onClick={loadMore}
+                      disabled={loadingMore}
+                      className="px-6 py-2.5 text-sm font-medium text-foreground bg-accent hover:bg-accent/80 border border-border rounded-full shadow-sm disabled:opacity-50 transition-all"
+                    >
+                      {loadingMore ? 'Loading more...' : `Load more contradictions (${allResults.length} of ${total})`}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="w-full">
+          {/* Replaced empty state with the breakdown component entirely if available */}
+          {!report.paper_breakdown && (
+            <div className="p-12 max-w-lg mx-auto text-center border mt-12 rounded-xl bg-card">
+              <h2 className="font-serif text-2xl mb-3">Analysis Complete</h2>
+              <p className="text-muted-foreground mb-6">
+                Run analysis again to see a detailed paper breakdown for this job.
+              </p>
+              <Link
+                href="/"
+                className="inline-flex items-center justify-center px-4 py-2 bg-primary text-primary-foreground font-medium rounded-md hover:bg-primary/90 transition-colors shadow-sm"
+              >
+                Try another search
+              </Link>
             </div>
           )}
         </div>
-      </div>
+      )}
+
+      {/* Paper Breakdown Section (shows below contradictions, or replaces the no-contradictions dead end) */}
+      {report.paper_breakdown && (
+        <div className={allResults.length > 0 ? "border-t border-border bg-muted/10 pb-8" : "bg-background pb-8"}>
+          {allResults.length > 0 && (
+            <div className="max-w-4xl mx-auto px-4 pt-16 pb-4">
+              <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider mb-2">Analysis Complete</h2>
+              <h3 className="text-3xl font-serif">Paper Breakdown</h3>
+            </div>
+          )}
+          <PaperBreakdown breakdown={report.paper_breakdown} />
+          
+          <Recommendations 
+            jobId={reportId} 
+            searchQueries={searchQueries.filter(Boolean)} 
+          />
+        </div>
+      )}
     </div>
   )
 }

@@ -48,6 +48,31 @@ export interface ProviderFailoverEvent {
   attempts: number
 }
 
+
+export interface CoreConcept {
+  name: string
+  plain_explanation: string
+  technical_explanation: string
+  why_it_matters: string
+}
+
+export interface SearchQueries {
+  youtube: string[]
+  academic: string[]
+  general: string[]
+}
+
+export interface PaperBreakdown {
+  one_line_summary: string
+  high_level_explanation: string
+  core_concepts: CoreConcept[]
+  methodology_summary: string
+  key_findings: string[]
+  limitations: string[]
+  related_fields: string[]
+  search_queries: SearchQueries
+}
+
 export interface Paper {
   id: string
   title: string
@@ -82,6 +107,12 @@ export interface ContradictionPair {
   key_difference: string | null
   mode: AnalysisMode
   cluster_id: string | null
+  claim_a_text: string | null
+  claim_b_text: string | null
+  paper_a_title: string
+  paper_b_title: string
+  contradiction_score: number
+  contradiction_type: string
 }
 
 export interface AnalysisJob {
@@ -151,6 +182,7 @@ export interface Report {
   has_contradictions: boolean
   created_at: string
   completed_at: string | null
+  paper_breakdown?: PaperBreakdown | null
   input_paper?: {
     title: string | null
     filename: string | null

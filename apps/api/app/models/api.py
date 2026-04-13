@@ -55,6 +55,15 @@ class AnalyzePaperTextRequest(BaseModel):
     sources: list[str] = Field(default_factory=lambda: ["arxiv", "semantic_scholar"])
 
 
+class OllamaTagsRequest(BaseModel):
+    base_url: str = Field(min_length=1)
+    api_key: str | None = None
+
+
+class OllamaTagsResponse(BaseModel):
+    models: list[str] = Field(default_factory=list)
+
+
 class ExportFormat(str, Enum):
     json = "json"
     csv = "csv"

@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
 
 from .paper import Paper
 
@@ -57,6 +57,38 @@ class ContradictionPair(BaseModel):
     raw: dict[str, Any] = Field(default_factory=dict)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+
     def model_post_init(self, __context: Any) -> None:
         if self.pair_key is None:
             self.pair_key = build_pair_key(self.paper_a_id, self.paper_b_id)
+
+    @computed_field
+    @property
+    def claim_a_text(self) -> str | None:
+        return self.paper_a_claim
+
+    @computed_field
+    @property
+    def claim_b_text(self) -> str | None:
+        return self.paper_b_claim
+
+    @computed_field
+    @property
+    def paper_a_title(self) -> str:
+        return self.paper_a.title if self.paper_a else ""
+
+    @computed_field
+    @property
+    def paper_b_title(self) -> str:
+        return self.paper_b.title if self.paper_b else ""
+
+    @computed_field
+    @property
+    def contradiction_score(self) -> float:
+        return self.score
+
+    @computed_field
+    @property
+    def contradiction_type(self) -> str:
+        return self.type.value if self.type else ""
+

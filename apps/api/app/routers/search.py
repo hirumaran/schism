@@ -14,6 +14,16 @@ from app.services.ingestion.service import IngestionService
 router = APIRouter(tags=["search"])
 
 
+@router.get("/search/autocomplete")
+async def get_autocomplete(
+    q: str = Query(default=""),
+    limit: int = Query(default=5, ge=1, le=20),
+    repository: SQLiteRepository = Depends(get_repository),
+) -> dict:
+    queries = repository.get_popular_queries(q, limit)
+    return {"popular": queries}
+
+
 @router.post("/search", response_model=SearchResponse)
 async def search_papers(
     request: SearchRequest,
@@ -24,7 +34,11 @@ async def search_papers(
     ingestion_service: IngestionService = Depends(get_ingestion_service),
     repository: SQLiteRepository = Depends(get_repository),
 ) -> SearchResponse:
-    selected_sources = [source.strip() for source in sources.split(",") if source.strip()] if sources else request.sources
+    selected_sources = (
+        [source.strip() for source in sources.split(",") if source.strip()]
+        if sources
+        else request.sources
+    )
     result = await ingestion_service.search(
         query=request.query,
         sources=selected_sources,
@@ -83,10 +97,14 @@ def _apply_search_filters(
 
 
 def _rank_papers(query: str, papers: list[Paper]) -> list[Paper]:
-    max_citations = max((paper.citation_count or 0) for paper in papers) if papers else 0
+    max_citations = (
+        max((paper.citation_count or 0) for paper in papers) if papers else 0
+    )
     current_year = datetime.now().year
     for paper in papers:
-        normalized_citation_count = (paper.citation_count or 0) / max_citations if max_citations else 0.0
+        normalized_citation_count = (
+            (paper.citation_count or 0) / max_citations if max_citations else 0.0
+        )
         query_overlap = jaccard_similarity(
             query,
             f"{paper.title} {paper.abstract or ''}",
@@ -94,9 +112,13 @@ def _rank_papers(query: str, papers: list[Paper]) -> list[Paper]:
         )
         recency_score = 0.0
         if paper.year is not None and current_year > 1990:
-            recency_score = max(0.0, min(1.0, (paper.year - 1990) / (current_year - 1990)))
+            recency_score = max(
+                0.0, min(1.0, (paper.year - 1990) / (current_year - 1990))
+            )
         paper.relevance_score = round(
-            (0.4 * normalized_citation_count) + (0.3 * query_overlap) + (0.3 * recency_score),
+            (0.4 * normalized_citation_count)
+            + (0.3 * query_overlap)
+            + (0.3 * recency_score),
             4,
         )
     return sorted(

@@ -15,6 +15,7 @@ from app.models.contradiction import (
     ContradictionPair,
     ContradictionType,
 )
+from app.models.report import PaperBreakdown, CoreConcept, SearchQueries
 from app.models.paper import Paper, jaccard_similarity, tokenize_text, word_count
 from app.services.llm_parser import (
     ClaimResult,
@@ -148,6 +149,37 @@ Return JSON:
 }}
 """.strip()
 
+
+BREAKDOWN_SYSTEM_PROMPT = """
+You are a brilliant science communicator who explains complex research papers to smart but non-expert readers.
+Your task is to break down a paper into clear, understandable components.
+Rules:
+- Start with the simplest possible explanation.
+- Build up to technical depth.
+- Never use undefined acronyms.
+- Treat the reader as a smart non-expert.
+Return valid JSON exactly matching the requested format.
+""".strip()
+
+BREAKDOWN_USER_PROMPT = """
+Paper Title: {title}
+Paper Abstract: {abstract}
+Other Text: {full_text}
+
+Generate a breakdown of this paper with:
+- one_line_summary
+- high_level_explanation (2-3 sentences, plain language, no jargon)
+- core_concepts (3-5 concepts with name, plain_explanation, technical_explanation, why_it_matters)
+- methodology_summary
+- key_findings (3-5 bullet points)
+- limitations (2-3 limitations the paper acknowledges or that are apparent)
+- related_fields
+- search_queries (with "youtube" x3 for explainers, "academic" x2-3 for related papers, "general" x2-3 for plain-language search)
+
+Return ONLY JSON.
+""".strip()
+
+
 HEDGING_PATTERNS = [
     "this paper investigates",
     "this study investigates",
@@ -208,6 +240,32 @@ def _is_non_retriable_4xx(status_code: int | None) -> bool:
 class LLMClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
+
+
+    async def generate_paper_breakdown(self, paper: Paper, context: ProviderContext) -> PaperBreakdown | None:
+        if self._should_use_fallback(context):
+            return None
+        
+        full_text = ""
+        if hasattr(paper, "raw") and paper.raw and isinstance(paper.raw, dict):
+            full_text = str(paper.raw.get("full_text", ""))[:4000]
+        
+        try:
+            raw_content = await self.failover_invoke(
+                system_prompt=BREAKDOWN_SYSTEM_PROMPT,
+                user_prompt=BREAKDOWN_USER_PROMPT.format(
+                    title=paper.title,
+                    abstract=paper.abstract or "",
+                    full_text=full_text,
+                ),
+                context=context,
+            )
+            result = parse_llm_json(raw_content, PaperBreakdown)
+            if result:
+                return PaperBreakdown.model_validate(result.model_dump())
+        except Exception as exc:
+            logger.warning("breakdown_generation_failed", extra={"error": str(exc)})
+        return None
 
     async def extract_claim(self, paper: Paper, context: ProviderContext) -> PaperClaim:
         if word_count(paper.abstract) < 80:
@@ -355,6 +413,8 @@ class LLMClient:
             key_difference=(parsed.key_difference or "").strip() or None,
             paper_a_claim=claim_a.claim,
             paper_b_claim=claim_b.claim,
+            paper_a=paper_a,
+            paper_b=paper_b,
             raw={"mode": "llm"},
         )
 
@@ -797,6 +857,8 @@ class LLMClient:
             key_difference=key_difference,
             paper_a_claim=claim_a.claim,
             paper_b_claim=claim_b.claim,
+            paper_a=paper_a,
+            paper_b=paper_b,
             raw={"mode": "heuristic"},
         )
 

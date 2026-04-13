@@ -35,12 +35,14 @@ export default function InputPage() {
       .catch(() => setBackendOnline(false))
   }, [])
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (overrideQuery?: string) => {
     setError(null)
+
+    const finalQuery = typeof overrideQuery === 'string' ? overrideQuery : query
 
     // Validation
     if (mode === 'query') {
-      if (!query.trim()) {
+      if (!finalQuery.trim()) {
         setError('Please enter a search query')
         return
       }
@@ -70,7 +72,7 @@ export default function InputPage() {
       let response
       if (mode === 'query') {
         response = await analyzeQuery(
-          { query, max_results: maxResults, sources },
+          { query: finalQuery, max_results: maxResults, sources },
           settings
         )
       } else {
@@ -83,7 +85,7 @@ export default function InputPage() {
 
       addRecentJob({
         id: response.job_id,
-        query: mode === 'query' ? query : title || 'Paper analysis',
+        query: mode === 'query' ? finalQuery : title || 'Paper analysis',
         status: response.status,
         contradiction_count: 0,
         created_at: new Date().toISOString(),
@@ -179,7 +181,7 @@ export default function InputPage() {
           <div className="pt-4 space-y-3">
             <ProviderBadge />
             <button
-              onClick={handleSubmit}
+              onClick={() => handleSubmit()}
               disabled={loading}
               className="w-full h-[52px] bg-foreground text-background text-base font-medium rounded-md hover:bg-foreground/90 disabled:opacity-50 disabled:cursor-not-allowed"
             >

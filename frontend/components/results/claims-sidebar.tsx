@@ -1,75 +1,99 @@
 'use client'
 
-import type { ContradictionPair, Paper } from '@/lib/types'
+import type { ContradictionPair } from '@/lib/types'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 
 interface ClaimsSidebarProps {
   results: ContradictionPair[]
-  activeClaimId: string | null
-  onClaimClick: (paperId: string) => void
+  activePairId: string | null
+  onPairClick: (pairId: string) => void
 }
 
-export function ClaimsSidebar({ results, activeClaimId, onClaimClick }: ClaimsSidebarProps) {
-  // Get unique papers with their max scores
-  const papersMap = new Map<string, { paper: Paper; maxScore: number }>()
-
-  results.forEach((pair) => {
-    const updatePaper = (paper: Paper, score: number) => {
-      const existing = papersMap.get(paper.id)
-      if (!existing || score > existing.maxScore) {
-        papersMap.set(paper.id, { paper, maxScore: score })
-      }
+export function ClaimsSidebar({ results, activePairId, onPairClick }: ClaimsSidebarProps) {
+  const getTypeBadge = (type: string | null) => {
+    switch (type) {
+      case 'direct': return 'bg-red-100 text-red-700 border-red-200'
+      case 'conditional': return 'bg-amber-100 text-amber-700 border-amber-200'
+      case 'methodological': return 'bg-gray-100 text-gray-700 border-gray-200'
+      default: return 'bg-gray-100 text-gray-700 border-gray-200'
     }
-    updatePaper(pair.paper_a, pair.score)
-    updatePaper(pair.paper_b, pair.score)
-  })
-
-  const papers = Array.from(papersMap.values()).sort((a, b) => b.maxScore - a.maxScore)
-
-  const getDotColor = (score: number) => {
-    if (score > 0.8) return 'bg-red-500'
-    if (score >= 0.6) return 'bg-amber-500'
-    return 'bg-green-500'
   }
 
-  const getSourceLabel = (source: string) => {
-    const labels: Record<string, string> = {
-      arxiv: 'arXiv',
-      semantic_scholar: 'Semantic Scholar',
-      pubmed: 'PubMed',
-      openalex: 'OpenAlex',
-      user_input: 'Your paper',
-    }
-    return labels[source] || source
+  const getScoreColor = (score: number) => {
+    if (score > 0.8) return 'text-red-600'
+    if (score >= 0.6) return 'text-amber-600'
+    return 'text-green-600'
   }
 
   return (
-    <div className="w-[280px] flex-shrink-0 sticky top-14 h-[calc(100vh-56px)] overflow-y-auto border-r border-border p-4">
-      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-3">
-        Claims
-      </h2>
-      <div className="space-y-2">
-        {papers.map(({ paper, maxScore }) => (
-          <button
-            key={paper.id}
-            onClick={() => onClaimClick(paper.id)}
-            className={`w-full text-left p-2 rounded-md transition-colors ${
-              activeClaimId === paper.id
-                ? 'bg-accent border border-foreground/20'
-                : 'hover:bg-accent/50'
-            }`}
-          >
-            <div className="flex items-start gap-2">
-              <span className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${getDotColor(maxScore)}`} />
-              <div className="min-w-0">
-                <p className="font-serif text-sm line-clamp-2">{paper.title}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  {paper.year} · {getSourceLabel(paper.source)}
-                </p>
-              </div>
-            </div>
-          </button>
-        ))}
+    <>
+      {/* Mobile Dropdown */}
+      <div className="md:hidden p-4 border-b border-border bg-background sticky top-14 z-10">
+        <Select value={activePairId || ''} onValueChange={onPairClick}>
+          <SelectTrigger className="w-full h-auto py-2">
+            <SelectValue placeholder="Select a contradiction to view" />
+          </SelectTrigger>
+          <SelectContent>
+            {results.map((pair) => (
+              <SelectItem key={pair.pair_key} value={pair.pair_key} className="py-2">
+                <div className="flex flex-col gap-1 text-left whitespace-normal max-w-[80vw]">
+                  <span className="font-serif text-sm line-clamp-1">{pair.paper_a.title}</span>
+                  <span className="text-xs text-muted-foreground italic">vs</span>
+                  <span className="font-serif text-sm line-clamp-1">{pair.paper_b.title}</span>
+                </div>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
-    </div>
+
+      {/* Desktop Sidebar */}
+      <div className="hidden md:flex flex-col w-[280px] flex-shrink-0 sticky top-14 h-[calc(100vh-56px)] border-r border-border">
+        <div className="p-4 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wider">
+            Contradictions ({results.length})
+          </h2>
+        </div>
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {results.map((pair) => {
+            const isActive = activePairId === pair.pair_key
+            return (
+              <button
+                key={pair.pair_key}
+                onClick={() => onPairClick(pair.pair_key)}
+                className={`w-full text-left p-3 rounded-lg transition-all border ${
+                  isActive
+                    ? 'bg-accent border-border shadow-sm'
+                    : 'border-transparent hover:bg-accent/50 hover:border-border/50'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <span className={`px-1.5 py-0.5 text-[10px] uppercase font-semibold rounded border ${getTypeBadge(pair.type)}`}>
+                    {pair.type || 'unknown'}
+                  </span>
+                  <span className={`text-xs font-bold ${getScoreColor(pair.score)}`}>
+                    {Math.round(pair.score * 100)}%
+                  </span>
+                </div>
+                
+                <div className="space-y-1.5">
+                  <p className="font-serif text-sm line-clamp-2 leading-snug" title={pair.paper_a.title}>
+                    {pair.paper_a.title}
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <div className="h-px flex-1 bg-border/60"></div>
+                    <span className="text-[10px] text-muted-foreground italic font-medium">vs</span>
+                    <div className="h-px flex-1 bg-border/60"></div>
+                  </div>
+                  <p className="font-serif text-sm line-clamp-2 leading-snug" title={pair.paper_b.title}>
+                    {pair.paper_b.title}
+                  </p>
+                </div>
+              </button>
+            )
+          })}
+        </div>
+      </div>
+    </>
   )
 }

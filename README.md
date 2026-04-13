@@ -103,7 +103,7 @@ Copy apps/api/.env.example to apps/api/.env
 Make sure uvicorn is running on port 8000.
 Check SCHISM_API_PROXY_TARGET in frontend/.env.local.
 
-**No contradictions found**
+**No results found**
 Try a more specific query. Increase max papers.
 Add more sources. The threshold is 0.6 — pairs
 below this are filtered out.
