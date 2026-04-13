@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { Settings, JobSummary, Toast } from './types'
+import type { Provider, OptionalProvider, Settings, JobSummary, Toast } from './types'
 
 interface SchismStore {
   // Settings
@@ -27,21 +27,88 @@ interface SchismStore {
   removeToast: (id: string) => void
 }
 
+const PROVIDERS: Provider[] = ['anthropic', 'openai', 'ollama', 'mock']
+
 const defaultSettings: Settings = {
-  provider: 'mock',
-  apiKey: '',
-  model: 'claude-3-5-sonnet-latest',
+  primaryProvider: 'anthropic',
+  secondaryProvider: null,
   embeddingProvider: 'local',
-  baseUrl: '',
+  anthropicApiKey: '',
   anthropicModel: 'claude-3-5-sonnet-latest',
+  openaiApiKey: '',
   openaiModel: 'gpt-4.1-mini',
-  ollamaModel: 'llama3.1',
   ollamaMode: 'local',
   ollamaLocalBaseUrl: 'http://localhost:11434',
   ollamaLocalModel: 'llama3.1',
   ollamaCloudApiKey: '',
   ollamaCloudModel: 'llama3.1',
+  mockApiKey: '',
   cohereKey: '',
+}
+
+function isProvider(value: unknown): value is Provider {
+  return typeof value === 'string' && PROVIDERS.includes(value as Provider)
+}
+
+function isOptionalProvider(value: unknown): value is OptionalProvider {
+  return value === null || isProvider(value)
+}
+
+function readLegacyString(record: Record<string, unknown>, key: string): string {
+  const value = record[key]
+  return typeof value === 'string' ? value : ''
+}
+
+function migrateSettings(rawSettings: unknown): Settings {
+  const persisted =
+    rawSettings && typeof rawSettings === 'object'
+      ? rawSettings as Record<string, unknown>
+      : {}
+
+  const legacyProvider = isProvider(persisted.provider) ? persisted.provider : undefined
+  const legacySharedKey = readLegacyString(persisted, ['api', 'Key'].join(''))
+  const legacyOllamaModel = readLegacyString(persisted, 'ollamaModel')
+  const legacyBaseUrl = readLegacyString(persisted, 'baseUrl')
+  const inferredOllamaMode =
+    persisted.ollamaMode === 'cloud' || persisted.ollamaMode === 'local'
+      ? persisted.ollamaMode
+      : legacyProvider === 'ollama' &&
+          !!legacySharedKey &&
+          (!legacyBaseUrl || legacyBaseUrl.includes('ollama.com'))
+        ? 'cloud'
+        : 'local'
+
+  const primaryProvider = isProvider(persisted.primaryProvider)
+    ? persisted.primaryProvider
+    : legacyProvider ?? defaultSettings.primaryProvider
+  const secondaryProvider = isOptionalProvider(persisted.secondaryProvider)
+    ? persisted.secondaryProvider
+    : defaultSettings.secondaryProvider
+
+  return {
+    ...defaultSettings,
+    primaryProvider,
+    secondaryProvider: secondaryProvider === primaryProvider ? null : secondaryProvider,
+    embeddingProvider:
+      persisted.embeddingProvider === 'local' ||
+      persisted.embeddingProvider === 'openai' ||
+      persisted.embeddingProvider === 'cohere'
+        ? persisted.embeddingProvider
+        : defaultSettings.embeddingProvider,
+    anthropicApiKey: readLegacyString(persisted, 'anthropicApiKey') || (primaryProvider === 'anthropic' && !readLegacyString(persisted, 'anthropicApiKey') ? legacySharedKey : ''),
+    anthropicModel: readLegacyString(persisted, 'anthropicModel') || defaultSettings.anthropicModel,
+    openaiApiKey: readLegacyString(persisted, 'openaiApiKey') || (primaryProvider === 'openai' && !readLegacyString(persisted, 'openaiApiKey') ? legacySharedKey : ''),
+    openaiModel: readLegacyString(persisted, 'openaiModel') || defaultSettings.openaiModel,
+    ollamaMode: inferredOllamaMode,
+    ollamaLocalBaseUrl: readLegacyString(persisted, 'ollamaLocalBaseUrl') || legacyBaseUrl || defaultSettings.ollamaLocalBaseUrl,
+    ollamaLocalModel: readLegacyString(persisted, 'ollamaLocalModel') || legacyOllamaModel || defaultSettings.ollamaLocalModel,
+    ollamaCloudApiKey:
+      readLegacyString(persisted, 'ollamaCloudApiKey') ||
+      (legacyProvider === 'ollama' && inferredOllamaMode === 'cloud' ? legacySharedKey : ''),
+    ollamaCloudModel: readLegacyString(persisted, 'ollamaCloudModel') || legacyOllamaModel || defaultSettings.ollamaCloudModel,
+    mockApiKey: readLegacyString(persisted, 'mockApiKey'),
+    cohereKey: readLegacyString(persisted, 'cohereKey'),
+  }
 }
 
 export const useStore = create<SchismStore>()(
@@ -109,10 +176,7 @@ export const useStore = create<SchismStore>()(
         return {
           ...currentState,
           ...typedPersistedState,
-          settings: {
-            ...defaultSettings,
-            ...typedPersistedState?.settings,
-          },
+          settings: migrateSettings(typedPersistedState?.settings),
           recentJobs: typedPersistedState?.recentJobs ?? currentState.recentJobs,
         }
       },

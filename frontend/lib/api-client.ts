@@ -1,10 +1,24 @@
 'use client'
 
-import type { Settings } from './types'
+import type { Provider, Settings } from './types'
 
 const AUTH_TOKEN_KEY = 'schism_auth_token'
 const RAW_API_BASE = process.env.NEXT_PUBLIC_API_URL?.trim() || '/api'
 export const DEFAULT_OLLAMA_CLOUD_BASE_URL = 'https://ollama.com'
+
+export const PROVIDER_LABELS: Record<Provider, string> = {
+  anthropic: 'Anthropic',
+  openai: 'OpenAI',
+  ollama: 'Ollama',
+  mock: 'Mock',
+}
+
+export interface ResolvedProviderConfig {
+  provider: Provider
+  apiKey: string
+  model: string
+  baseUrl: string
+}
 
 export class ApiError extends Error {
   constructor(
@@ -50,31 +64,100 @@ function notifyAuthExpired(): void {
   window.dispatchEvent(new CustomEvent('schism:auth-expired'))
 }
 
-export function providerHeaders(settings?: Settings): HeadersInit {
-  if (!settings) return {}
-  let apiKey = settings.apiKey
-  let model = settings.model
-  let baseUrl = ''
-
-  if (settings.provider === 'ollama') {
-    const isCloudMode = settings.ollamaMode === 'cloud'
-    apiKey = isCloudMode ? settings.ollamaCloudApiKey : ''
-    model = isCloudMode ? settings.ollamaCloudModel : settings.ollamaLocalModel
-    baseUrl = isCloudMode ? DEFAULT_OLLAMA_CLOUD_BASE_URL : settings.ollamaLocalBaseUrl
+export function resolveProviderConfig(
+  settings: Settings,
+  provider: Provider = settings.primaryProvider
+): ResolvedProviderConfig {
+  switch (provider) {
+    case 'anthropic':
+      return {
+        provider,
+        apiKey: settings.anthropicApiKey.trim(),
+        model: settings.anthropicModel.trim(),
+        baseUrl: '',
+      }
+    case 'openai':
+      return {
+        provider,
+        apiKey: settings.openaiApiKey.trim(),
+        model: settings.openaiModel.trim(),
+        baseUrl: '',
+      }
+    case 'ollama':
+      return settings.ollamaMode === 'cloud'
+        ? {
+            provider,
+            apiKey: settings.ollamaCloudApiKey.trim(),
+            model: settings.ollamaCloudModel.trim(),
+            baseUrl: DEFAULT_OLLAMA_CLOUD_BASE_URL,
+          }
+        : {
+            provider,
+            apiKey: '',
+            model: settings.ollamaLocalModel.trim(),
+            baseUrl: settings.ollamaLocalBaseUrl.trim(),
+          }
+    case 'mock':
+      return {
+        provider,
+        apiKey: '',
+        model: '',
+        baseUrl: '',
+      }
   }
+}
+
+export function isProviderConfigured(settings: Settings, provider: Provider): boolean {
+  const resolved = resolveProviderConfig(settings, provider)
+  if (provider === 'mock') return true
+  if (provider === 'ollama') {
+    return Boolean(resolved.baseUrl || resolved.apiKey)
+  }
+  return Boolean(resolved.apiKey)
+}
+
+export function providerHeaders(
+  settings?: Settings,
+  options: { provider?: Provider; includeSecondary?: boolean } = {}
+): HeadersInit {
+  if (!settings) return {}
+  const primary = resolveProviderConfig(settings, options.provider ?? settings.primaryProvider)
+  const includeSecondary =
+    options.includeSecondary !== false &&
+    !options.provider &&
+    settings.secondaryProvider !== null &&
+    settings.secondaryProvider !== settings.primaryProvider &&
+    isProviderConfigured(settings, settings.secondaryProvider)
 
   const headers: HeadersInit = {
-    'X-Provider': settings.provider,
-    'X-Model': model,
+    'X-Provider': primary.provider,
     'X-Embedding-Provider': settings.embeddingProvider,
   }
 
-  if (baseUrl) {
-    headers['X-Base-Url'] = baseUrl
+  if (primary.model) {
+    headers['X-Model'] = primary.model
   }
 
-  if (apiKey) {
-    headers['X-Api-Key'] = apiKey
+  if (primary.baseUrl) {
+    headers['X-Base-Url'] = primary.baseUrl
+  }
+
+  if (primary.apiKey) {
+    headers['X-Api-Key'] = primary.apiKey
+  }
+
+  if (includeSecondary && settings.secondaryProvider) {
+    const secondary = resolveProviderConfig(settings, settings.secondaryProvider)
+    headers['X-Secondary-Provider'] = secondary.provider
+    if (secondary.model) {
+      headers['X-Secondary-Model'] = secondary.model
+    }
+    if (secondary.baseUrl) {
+      headers['X-Secondary-Base-Url'] = secondary.baseUrl
+    }
+    if (secondary.apiKey) {
+      headers['X-Secondary-Api-Key'] = secondary.apiKey
+    }
   }
 
   return headers

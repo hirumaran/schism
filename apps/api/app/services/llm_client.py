@@ -3,18 +3,39 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
 
 from app.config import Settings
 from app.models.claim import ClaimDirection, ClaimMagnitude, InputClaim, PaperClaim
-from app.models.contradiction import ContradictionMode, ContradictionPair, ContradictionType
+from app.models.contradiction import (
+    ContradictionMode,
+    ContradictionPair,
+    ContradictionType,
+)
 from app.models.paper import Paper, jaccard_similarity, tokenize_text, word_count
-from app.services.llm_parser import ClaimResult, ContradictionResult, InputClaimsResult, parse_llm_json
+from app.services.llm_parser import (
+    ClaimResult,
+    ContradictionResult,
+    InputClaimsResult,
+    parse_llm_json,
+)
 
 logger = logging.getLogger(__name__)
+
+_REDACTED = "[REDACTED]"
+_REDACTED_KEYS = frozenset({"api_key", "key", "token", "authorization"})
+
+
+def _redact(value: str | None) -> str:
+    if value is None:
+        return _REDACTED
+    if len(value) <= 4:
+        return _REDACTED
+    return value[:2] + "*" * (len(value) - 4) + value[-2:]
+
 
 CLAIM_SYSTEM_PROMPT = """
 You are a scientific claim extractor. Your only job is to identify
@@ -146,10 +167,42 @@ class ProviderContext:
     base_url: str | None = None
     embedding_provider: str | None = None
     embedding_api_key: str | None = None
+    secondary_provider: str | None = None
+    secondary_api_key: str | None = None
+    secondary_model: str | None = None
+    secondary_base_url: str | None = None
+    failover_meta: FailoverMeta | None = None
 
     @property
     def normalized_provider(self) -> str:
         return (self.provider or "mock").strip().lower()
+
+
+@dataclass(slots=True)
+class FailoverMeta:
+    failover_occurred: bool = False
+    provider_used: str | None = None
+    primary_error: str | None = None
+
+
+_RETRIABLE_PATTERNS = [
+    "rate limit",
+    "quota",
+    "insufficient credits",
+    "overloaded",
+    "capacity",
+]
+
+
+def _is_retriable(exc: Exception, status_code: int | None) -> bool:
+    if status_code in (429, 402, 503):
+        return True
+    msg = str(exc).lower()
+    return any(p in msg for p in _RETRIABLE_PATTERNS)
+
+
+def _is_non_retriable_4xx(status_code: int | None) -> bool:
+    return status_code in (400, 401)
 
 
 class LLMClient:
@@ -177,7 +230,9 @@ class LLMClient:
         primary = await self._extract_claim_via_llm(
             paper=paper,
             context=context,
-            user_prompt=CLAIM_USER_PROMPT.format(title=paper.title.strip(), abstract=(paper.abstract or "").strip()),
+            user_prompt=CLAIM_USER_PROMPT.format(
+                title=paper.title.strip(), abstract=(paper.abstract or "").strip()
+            ),
         )
         if primary is not None:
             return self._finalize_claim(primary)
@@ -185,7 +240,9 @@ class LLMClient:
         fallback = await self._extract_claim_via_llm(
             paper=paper,
             context=context,
-            user_prompt=CLAIM_FALLBACK_PROMPT.format(title=paper.title.strip(), abstract=(paper.abstract or "").strip()),
+            user_prompt=CLAIM_FALLBACK_PROMPT.format(
+                title=paper.title.strip(), abstract=(paper.abstract or "").strip()
+            ),
         )
         if fallback is not None:
             return self._finalize_claim(fallback)
@@ -203,18 +260,24 @@ class LLMClient:
             raw={"mode": "failed"},
         )
 
-    async def extract_input_claims(self, best_section: str, context: ProviderContext) -> list[InputClaim]:
+    async def extract_input_claims(
+        self, best_section: str, context: ProviderContext
+    ) -> list[InputClaim]:
         if self._should_use_fallback(context):
             return self._heuristic_input_claims(best_section)
 
         try:
-            raw_content = await self._invoke_text(
+            raw_content = await self.failover_invoke(
                 system_prompt=INPUT_CLAIMS_SYSTEM_PROMPT,
-                user_prompt=INPUT_CLAIMS_USER_PROMPT.format(best_section=best_section.strip()),
+                user_prompt=INPUT_CLAIMS_USER_PROMPT.format(
+                    best_section=best_section.strip()
+                ),
                 context=context,
             )
         except Exception as exc:
-            logger.warning("input_claim_extraction_request_failed", extra={"error": str(exc)})
+            logger.warning(
+                "input_claim_extraction_request_failed", extra={"error": str(exc)}
+            )
             return self._heuristic_input_claims(best_section)
 
         result = parse_llm_json(raw_content, InputClaimsResult)
@@ -252,11 +315,13 @@ class LLMClient:
         paper_b: Paper,
         context: ProviderContext,
     ) -> ContradictionPair:
-        fallback = self._heuristic_contradiction(claim_a, claim_b, paper_a, paper_b, context)
+        fallback = self._heuristic_contradiction(
+            claim_a, claim_b, paper_a, paper_b, context
+        )
         if self._should_use_fallback(context):
             return fallback
 
-        raw_content = await self._invoke_text(
+        raw_content = await self.failover_invoke(
             system_prompt=CONTRADICTION_SYSTEM_PROMPT,
             user_prompt=CONTRADICTION_USER_PROMPT.format(
                 year_a=paper_a.year or "unknown",
@@ -297,7 +362,7 @@ class LLMClient:
         self, paper: Paper, context: ProviderContext, user_prompt: str
     ) -> PaperClaim | None:
         try:
-            raw_content = await self._invoke_text(
+            raw_content = await self.failover_invoke(
                 system_prompt=CLAIM_SYSTEM_PROMPT,
                 user_prompt=user_prompt,
                 context=context,
@@ -336,7 +401,11 @@ class LLMClient:
                     wait = float(2**attempt)
                     logger.warning(
                         "llm_rate_limited",
-                        extra={"attempt": attempt, "wait_seconds": wait, "status_code": response.status_code},
+                        extra={
+                            "attempt": attempt,
+                            "wait_seconds": wait,
+                            "status_code": response.status_code,
+                        },
                     )
                     await asyncio.sleep(wait)
                     continue
@@ -350,12 +419,15 @@ class LLMClient:
                 await asyncio.sleep(1.0)
         raise RuntimeError(f"LLM call failed after {max_attempts} attempts")
 
-    async def _invoke_text(self, system_prompt: str, user_prompt: str, context: ProviderContext) -> str:
+    async def _invoke_text(
+        self, system_prompt: str, user_prompt: str, context: ProviderContext
+    ) -> str:
         provider = context.normalized_provider
         timeout = httpx.Timeout(self.settings.llm_timeout_seconds)
 
         async with httpx.AsyncClient(timeout=timeout) as client:
             if provider == "openai":
+
                 async def call_openai():
                     response = await client.post(
                         self._provider_url(provider, context.base_url),
@@ -383,6 +455,7 @@ class LLMClient:
                 return payload["choices"][0]["message"]["content"]
 
             if provider == "anthropic":
+
                 async def call_anthropic():
                     response = await client.post(
                         self._provider_url(provider, context.base_url),
@@ -415,6 +488,7 @@ class LLMClient:
                 headers = {"Content-Type": "application/json"}
                 if context.api_key:
                     headers["Authorization"] = f"Bearer {context.api_key}"
+
                 async def call_ollama():
                     response = await client.post(
                         self._provider_url(provider, context.base_url),
@@ -439,10 +513,124 @@ class LLMClient:
 
         raise ValueError(f"Unsupported provider: {provider}")
 
+    async def failover_invoke(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        context: ProviderContext,
+    ) -> str:
+        """Invoke LLM with automatic failover from primary to secondary provider on retriable errors.
+
+        On success, sets context.failover_meta with failover_occurred=False.
+        On failover success, sets context.failover_meta with failover_occurred=True.
+        On both-providers-failed, raises a RuntimeError naming both providers.
+        """
+        primary_provider = context.normalized_provider
+        secondary_provider = (context.secondary_provider or "").strip().lower() or None
+        secondary_configured = (
+            secondary_provider is not None
+            and secondary_provider not in ("mock", "local", "")
+            and (bool(context.secondary_api_key) or secondary_provider == "ollama")
+        )
+
+        # Try primary
+        try:
+            result = await self._invoke_text(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                context=context,
+            )
+            context.failover_meta = FailoverMeta(
+                failover_occurred=False,
+                provider_used=primary_provider,
+                primary_error=None,
+            )
+            return result
+        except Exception as primary_exc:
+            primary_status: int | None = None
+            if isinstance(primary_exc, httpx.HTTPStatusError):
+                primary_status = primary_exc.response.status_code
+
+            # Non-retriable: don't failover
+            if _is_non_retriable_4xx(primary_status):
+                raise
+
+            # Not retriable: don't failover
+            if not _is_retriable(primary_exc, primary_status):
+                raise
+
+            # No secondary configured: don't failover
+            if not secondary_configured or not secondary_provider:
+                raise
+
+            # Build secondary context
+            secondary_context = ProviderContext(
+                provider=secondary_provider,
+                api_key=context.secondary_api_key,
+                model=context.secondary_model,
+                base_url=context.secondary_base_url,
+                embedding_provider=context.embedding_provider,
+                embedding_api_key=context.embedding_api_key,
+            )
+
+            primary_error_summary = (
+                f"HTTP {primary_status}"
+                if primary_status
+                else type(primary_exc).__name__
+            )
+            primary_error_detail = str(primary_exc)
+
+            # Console log the failover (API key redacted)
+            safe_key = _redact(context.api_key)
+            logger.warning(
+                "[Schism Failover] %s | Primary: %s | Error: %s (key: %s) | Retrying with: %s",
+                primary_provider.upper(),
+                primary_error_summary,
+                type(primary_exc).__name__,
+                safe_key,
+                secondary_provider.upper(),
+            )
+
+            # Try secondary
+            try:
+                result = await self._invoke_text(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    context=secondary_context,
+                )
+                context.failover_meta = FailoverMeta(
+                    failover_occurred=True,
+                    provider_used=secondary_provider,
+                    primary_error=(
+                        f"{primary_error_summary}: {primary_error_detail[:100]}"
+                    ),
+                )
+                return result
+            except Exception as secondary_exc:
+                secondary_status: int | None = None
+                if isinstance(secondary_exc, httpx.HTTPStatusError):
+                    secondary_status = secondary_exc.response.status_code
+                secondary_error_summary = (
+                    f"HTTP {secondary_status}"
+                    if secondary_status
+                    else type(secondary_exc).__name__
+                )
+                secondary_error_detail = str(secondary_exc)
+                raise RuntimeError(
+                    f"Both providers failed. Primary ({primary_provider}) error: "
+                    f"{primary_error_summary}: {primary_error_detail}. "
+                    f"Secondary ({secondary_provider}) error: "
+                    f"{secondary_error_summary}: {secondary_error_detail}"
+                ) from primary_exc
+
     def _provider_url(self, provider: str, base_url: str | None) -> str:
         if provider == "openai":
             root = (base_url or "https://api.openai.com").rstrip("/")
-            return root if root.endswith("/v1/chat/completions") else f"{root}/v1/chat/completions"
+            return (
+                root
+                if root.endswith("/v1/chat/completions")
+                else f"{root}/v1/chat/completions"
+            )
         if provider == "anthropic":
             root = (base_url or "https://api.anthropic.com").rstrip("/")
             return root if root.endswith("/v1/messages") else f"{root}/v1/messages"
@@ -481,7 +669,9 @@ class LLMClient:
         claim.quality = max(claim.confidence, 0.5)
         return claim
 
-    def _claim_validation_reason(self, claim_text: str, confidence: float) -> str | None:
+    def _claim_validation_reason(
+        self, claim_text: str, confidence: float
+    ) -> str | None:
         if len(claim_text.split()) < 12:
             return "claim_too_short"
         if confidence < 0.5:
@@ -493,7 +683,11 @@ class LLMClient:
 
     def _heuristic_claim(self, paper: Paper, context: ProviderContext) -> PaperClaim:
         abstract = re.sub(r"\s+", " ", (paper.abstract or "").strip())
-        sentences = [segment.strip() for segment in re.split(r"(?<=[.!?])\s+", abstract) if segment.strip()]
+        sentences = [
+            segment.strip()
+            for segment in re.split(r"(?<=[.!?])\s+", abstract)
+            if segment.strip()
+        ]
         prioritized = [
             sentence
             for sentence in sentences
@@ -513,12 +707,18 @@ class LLMClient:
                 ]
             )
         ]
-        chosen = prioritized[0] if prioritized else (sentences[-1] if sentences else paper.title)
+        chosen = (
+            prioritized[0]
+            if prioritized
+            else (sentences[-1] if sentences else paper.title)
+        )
         population = self._infer_population(paper)
         outcome = self._infer_outcome(paper, chosen)
         direction = self._detect_direction(chosen)
         magnitude = self._detect_magnitude(chosen)
-        confidence = 0.72 if chosen != paper.title and len(chosen.split()) >= 12 else 0.45
+        confidence = (
+            0.72 if chosen != paper.title and len(chosen.split()) >= 12 else 0.45
+        )
         return PaperClaim(
             paper_id=paper.id,
             provider=context.normalized_provider,
@@ -544,10 +744,14 @@ class LLMClient:
         context: ProviderContext,
     ) -> ContradictionPair:
         outcome_similarity = jaccard_similarity(claim_a.outcome, claim_b.outcome)
-        direction_conflict = claim_a.direction != claim_b.direction and ClaimDirection.null not in {
-            claim_a.direction,
-            claim_b.direction,
-        }
+        direction_conflict = (
+            claim_a.direction != claim_b.direction
+            and ClaimDirection.null
+            not in {
+                claim_a.direction,
+                claim_b.direction,
+            }
+        )
         null_involved = ClaimDirection.null in {claim_a.direction, claim_b.direction}
         raw_score = 0.15
         contradiction_type: ContradictionType | None = ContradictionType.null
@@ -559,7 +763,9 @@ class LLMClient:
         if direction_conflict and outcome_similarity >= 0.2:
             raw_score = 0.82
             contradiction_type = ContradictionType.direct
-            explanation = "The findings target similar outcomes but point in opposite directions."
+            explanation = (
+                "The findings target similar outcomes but point in opposite directions."
+            )
             is_contradiction = True
             could_both_be_true = False
             key_difference = "opposite effect direction"
@@ -571,7 +777,9 @@ class LLMClient:
         elif outcome_similarity >= 0.2:
             raw_score = 0.3
             contradiction_type = ContradictionType.methodological
-            explanation = "The findings are related but do not cleanly reverse one another."
+            explanation = (
+                "The findings are related but do not cleanly reverse one another."
+            )
             key_difference = "method variation"
 
         return ContradictionPair(
@@ -602,7 +810,9 @@ class LLMClient:
         seen_queries: set[str] = set()
         for sentence in sentences:
             direction = self._detect_direction(sentence)
-            query_tokens = list(tokenize_text(sentence, drop_stop_words=True, min_length=3))[:6]
+            query_tokens = list(
+                tokenize_text(sentence, drop_stop_words=True, min_length=3)
+            )[:6]
             search_query = " ".join(query_tokens[:6]).strip()
             if not search_query or search_query in seen_queries:
                 continue
@@ -654,9 +864,14 @@ class LLMClient:
     @staticmethod
     def _detect_magnitude(text: str) -> ClaimMagnitude:
         lowered = text.lower()
-        if any(marker in lowered for marker in ["strong", "marked", "substantial", "dramatic"]):
+        if any(
+            marker in lowered
+            for marker in ["strong", "marked", "substantial", "dramatic"]
+        ):
             return ClaimMagnitude.strong
-        if any(marker in lowered for marker in ["moderate", "significant", "meaningful"]):
+        if any(
+            marker in lowered for marker in ["moderate", "significant", "meaningful"]
+        ):
             return ClaimMagnitude.moderate
         if any(marker in lowered for marker in ["small", "slight", "weak"]):
             return ClaimMagnitude.weak
@@ -665,7 +880,12 @@ class LLMClient:
     @staticmethod
     def _infer_population(paper: Paper) -> str | None:
         source = " ".join([paper.title, paper.abstract or ""]).lower()
-        if "mouse" in source or "mice" in source or "rat" in source or "animal" in source:
+        if (
+            "mouse" in source
+            or "mice" in source
+            or "rat" in source
+            or "animal" in source
+        ):
             return "animal"
         if "in vitro" in source or "cell line" in source:
             return "in vitro"
@@ -689,7 +909,11 @@ class LLMClient:
                 tokens = list(tokenize_text(candidate, drop_stop_words=True))
                 if tokens:
                     return " ".join(tokens[:4])
-        tokens = [token for token in tokenize_text(sentence, drop_stop_words=True) if token not in tokenize_text(paper.title, drop_stop_words=True)]
+        tokens = [
+            token
+            for token in tokenize_text(sentence, drop_stop_words=True)
+            if token not in tokenize_text(paper.title, drop_stop_words=True)
+        ]
         if tokens:
             return " ".join(list(tokens)[:4])
         return None

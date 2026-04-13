@@ -6,19 +6,19 @@ export function ProviderBadge() {
   const { settings, setSettingsOpen } = useStore()
 
   const getLabel = () => {
-    switch (settings.provider) {
+    switch (settings.primaryProvider) {
       case 'anthropic':
         return `Anthropic · ${settings.anthropicModel}`
       case 'openai':
         return `OpenAI · ${settings.openaiModel}`
       case 'ollama':
-        return `Ollama · ${settings.ollamaModel}`
+        return `Ollama · ${settings.ollamaMode === 'cloud' ? settings.ollamaCloudModel : settings.ollamaLocalModel}`
       case 'mock':
         return 'mock — results use heuristics'
     }
   }
 
-  const isMock = settings.provider === 'mock'
+  const isMock = settings.primaryProvider === 'mock'
 
   return (
     <button

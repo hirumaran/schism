@@ -79,6 +79,9 @@ class AnalysisJob(BaseModel):
     error: str | None = None
     metadata: dict[str, object] = Field(default_factory=dict)
     warnings: list[str] = Field(default_factory=list)
+    failover_occurred: bool = False
+    provider_used: str | None = None
+    primary_error: str | None = None
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     completed_at: datetime | None = None

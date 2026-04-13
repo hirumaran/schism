@@ -4,6 +4,8 @@ export type EmbeddingProvider = 'local' | 'openai' | 'cohere'
 
 export type OllamaMode = 'local' | 'cloud'
 
+export type OptionalProvider = Provider | null
+
 export type JobStatus =
   | 'pending'
   | 'running'
@@ -19,20 +21,31 @@ export type ContradictionType = 'direct' | 'conditional' | 'methodological' | 'n
 export type AnalysisMode = 'corpus_vs_corpus' | 'paper_vs_corpus'
 
 export interface Settings {
-  provider: Provider
-  apiKey: string
-  model: string
+  primaryProvider: Provider
+  secondaryProvider: OptionalProvider
   embeddingProvider: EmbeddingProvider
-  baseUrl: string
+  anthropicApiKey: string
   anthropicModel: string
+  openaiApiKey: string
   openaiModel: string
-  ollamaModel: string
-   ollamaMode: OllamaMode
-   ollamaLocalBaseUrl: string
-   ollamaLocalModel: string
-   ollamaCloudApiKey: string
-   ollamaCloudModel: string
+  ollamaMode: OllamaMode
+  ollamaLocalBaseUrl: string
+  ollamaLocalModel: string
+  ollamaCloudApiKey: string
+  ollamaCloudModel: string
+  mockApiKey: string
   cohereKey: string
+}
+
+export interface ProviderFailoverEvent {
+  id: string
+  timestamp: string
+  operation: string
+  primary_provider: Provider
+  secondary_provider: Provider
+  trigger: string
+  status_code?: number | null
+  attempts: number
 }
 
 export interface Paper {
@@ -91,6 +104,9 @@ export interface AnalysisJob {
   has_contradictions: boolean
   cached_pair_count: number
   mode: AnalysisMode
+  failover_occurred?: boolean
+  provider_used?: string | null
+  primary_error?: string | null
   metadata?: Record<string, unknown>
   warnings?: string[]
 }

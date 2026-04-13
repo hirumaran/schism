@@ -93,7 +93,7 @@ async function fetchOpenAIModels(apiKey: string) {
 
 export function SettingsModal() {
   const { settings, updateSettings, settingsOpen, setSettingsOpen, addToast } = useStore()
-  const [activeTab, setActiveTab] = useState<Provider>(settings.provider)
+  const [activeTab, setActiveTab] = useState<Provider>(settings.primaryProvider)
   const [localSettings, setLocalSettings] = useState(settings)
   const [validating, setValidating] = useState(false)
   const [validationResult, setValidationResult] = useState<'valid' | 'invalid' | 'error' | null>(null)
@@ -119,7 +119,7 @@ export function SettingsModal() {
     if (settingsOpen) {
       validationRequestId.current += 1
       setLocalSettings(settings)
-      setActiveTab(settings.provider)
+      setActiveTab(settings.primaryProvider)
       setValidating(false)
       setValidationResult(null)
       setAnthropicModels([])
@@ -143,7 +143,6 @@ export function SettingsModal() {
   const handleTabChange = (tab: Provider) => {
     validationRequestId.current += 1
     setActiveTab(tab)
-    setLocalSettings((s) => ({ ...s, provider: tab }))
     setValidating(false)
     setValidationResult(null)
     setAnthropicModels([])
@@ -159,14 +158,14 @@ export function SettingsModal() {
     setValidationResult(null)
     setOllamaValidationMessage(null)
     try {
-      const valid = await validateKey(localSettings)
+      const valid = await validateKey(localSettings, activeTab)
       if (requestId !== validationRequestId.current) return
       if (valid) {
         setValidationResult('valid')
         setFetchingModels(true)
         try {
           if (activeTab === 'anthropic') {
-            const models = await fetchAnthropicModels(localSettings.apiKey)
+            const models = await fetchAnthropicModels(localSettings.anthropicApiKey)
             if (requestId !== validationRequestId.current) return
             setAnthropicModels(models)
             if (models.length > 0) {
@@ -176,7 +175,7 @@ export function SettingsModal() {
               }))
             }
           } else if (activeTab === 'openai') {
-            const models = await fetchOpenAIModels(localSettings.apiKey)
+            const models = await fetchOpenAIModels(localSettings.openaiApiKey)
             if (requestId !== validationRequestId.current) return
             setOpenaiModels(models)
             if (models.length > 0) {
@@ -272,16 +271,9 @@ export function SettingsModal() {
 
   const handleSave = () => {
     const finalOllamaModel = getOllamaModel(localSettings)
-    const finalModel =
-      localSettings.provider === 'anthropic'
-        ? localSettings.anthropicModel
-        : localSettings.provider === 'openai'
-          ? localSettings.openaiModel
-          : finalOllamaModel
     const finalSettings = {
       ...localSettings,
       ollamaModel: finalOllamaModel,
-      model: finalModel,
     }
     setLocalSettings(finalSettings)
     updateSettings(finalSettings)
@@ -334,14 +326,14 @@ export function SettingsModal() {
                   <input
                     type="password"
                     placeholder="sk-ant-..."
-                    value={localSettings.apiKey}
+                    value={localSettings.anthropicApiKey}
                     onChange={(e) => {
                       validationRequestId.current += 1
                       setValidating(false)
                       setFetchingModels(false)
                       setValidationResult(null)
                       setAnthropicModels([])
-                      setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                      setLocalSettings((s) => ({ ...s, anthropicApiKey: e.target.value }))
                     }}
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
@@ -387,7 +379,7 @@ export function SettingsModal() {
                 </div>
                 <button
                   onClick={handleValidate}
-                  disabled={validating || fetchingModels || !localSettings.apiKey}
+                  disabled={validating || fetchingModels || !localSettings.anthropicApiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
                   {fetchingModels ? 'Fetching models...' : validating ? 'Checking...' : 'Check backend connection'}
@@ -416,14 +408,14 @@ export function SettingsModal() {
                   <input
                     type="password"
                     placeholder="sk-..."
-                    value={localSettings.apiKey}
+                    value={localSettings.openaiApiKey}
                     onChange={(e) => {
                       validationRequestId.current += 1
                       setValidating(false)
                       setFetchingModels(false)
                       setValidationResult(null)
                       setOpenaiModels([])
-                      setLocalSettings((s) => ({ ...s, apiKey: e.target.value }))
+                      setLocalSettings((s) => ({ ...s, openaiApiKey: e.target.value }))
                     }}
                     className="w-full px-3 py-2 border border-border rounded-md text-sm bg-background"
                   />
@@ -469,7 +461,7 @@ export function SettingsModal() {
                 </div>
                 <button
                   onClick={handleValidate}
-                  disabled={validating || fetchingModels || !localSettings.apiKey}
+                  disabled={validating || fetchingModels || !localSettings.openaiApiKey}
                   className="px-4 py-2 text-sm border border-border rounded-md hover:bg-accent disabled:opacity-50"
                 >
                   {fetchingModels ? 'Fetching models...' : validating ? 'Checking...' : 'Check backend connection'}
@@ -697,6 +689,108 @@ export function SettingsModal() {
                 </label>
               ))}
             </div>
+          </div>
+
+          <div className="pt-6 border-t border-border">
+            <label className="block text-sm font-medium mb-3">Primary provider</label>
+            <p className="text-xs text-muted-foreground mb-3">
+              Schism uses this provider for all LLM calls. Select a provider that is configured above.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(['anthropic', 'openai', 'ollama', 'mock'] as Provider[]).map((p) => {
+                const isConfigured = p === 'mock' || (
+                  p === 'anthropic' ? Boolean(localSettings.anthropicApiKey) :
+                  p === 'openai' ? Boolean(localSettings.openaiApiKey) :
+                  p === 'ollama' ? (localSettings.ollamaMode === 'cloud' ? Boolean(localSettings.ollamaCloudApiKey) : Boolean(localSettings.ollamaLocalBaseUrl)) :
+                  true
+                )
+                const isPrimary = localSettings.primaryProvider === p
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      if (!isConfigured) return
+                      setLocalSettings((s) => ({ ...s, primaryProvider: p }))
+                    }}
+                    className={`px-3 py-2 text-sm border rounded-md text-left ${
+                      isPrimary
+                        ? 'border-foreground bg-accent font-medium'
+                        : isConfigured
+                          ? 'border-border hover:bg-accent'
+                          : 'border-border opacity-40 cursor-not-allowed'
+                    }`}
+                  >
+                    <span className="block font-medium">{PROVIDER_LABELS[p]}</span>
+                    {isPrimary && <span className="text-xs text-muted-foreground">Primary</span>}
+                    {!isConfigured && !isPrimary && <span className="text-xs text-muted-foreground">Not configured</span>}
+                  </button>
+                )
+              })}
+            </div>
+            {!localSettings.anthropicApiKey && !localSettings.openaiApiKey &&
+             (localSettings.ollamaMode === 'cloud' ? !localSettings.ollamaCloudApiKey : !localSettings.ollamaLocalBaseUrl) &&
+             localSettings.primaryProvider !== 'mock' && (
+              <p className="text-xs text-amber-600 mt-2">
+                No API keys detected. Configure a provider above or set Primary to &quot;Mock&quot;.
+              </p>
+            )}
+          </div>
+
+          <div className="pt-6 border-t border-border">
+            <label className="block text-sm font-medium mb-3">Fallback provider (optional)</label>
+            <p className="text-xs text-muted-foreground mb-3">
+              If the primary provider fails with a retriable error (rate limit, service unavailable), Schism automatically retries with this provider.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setLocalSettings((s) => ({ ...s, secondaryProvider: null }))}
+                className={`px-3 py-2 text-sm border rounded-md text-left ${
+                  localSettings.secondaryProvider === null
+                    ? 'border-foreground bg-accent font-medium'
+                    : 'border-border hover:bg-accent'
+                }`}
+              >
+                <span className="block font-medium">None</span>
+                <span className="text-xs text-muted-foreground">No fallback</span>
+              </button>
+              {(['anthropic', 'openai', 'ollama'] as Provider[]).map((p) => {
+                const isConfigured = (
+                  p === 'anthropic' ? Boolean(localSettings.anthropicApiKey) :
+                  p === 'openai' ? Boolean(localSettings.openaiApiKey) :
+                  p === 'ollama' ? (localSettings.ollamaMode === 'cloud' ? Boolean(localSettings.ollamaCloudApiKey) : Boolean(localSettings.ollamaLocalBaseUrl)) :
+                  true
+                )
+                const isSecondary = localSettings.secondaryProvider === p
+                const isPrimary = localSettings.primaryProvider === p
+                return (
+                  <button
+                    key={p}
+                    type="button"
+                    onClick={() => {
+                      if (!isConfigured || isPrimary) return
+                      setLocalSettings((s) => ({ ...s, secondaryProvider: p }))
+                    }}
+                    className={`px-3 py-2 text-sm border rounded-md text-left ${
+                      isSecondary
+                        ? 'border-foreground bg-accent font-medium'
+                        : isConfigured && !isPrimary
+                          ? 'border-border hover:bg-accent'
+                          : 'border-border opacity-40 cursor-not-allowed'
+                    }`}
+                  >
+                    <span className="block font-medium">{PROVIDER_LABELS[p]}</span>
+                    {isSecondary && <span className="text-xs text-muted-foreground">Fallback</span>}
+                    {!isConfigured && !isSecondary && !isPrimary && <span className="text-xs text-muted-foreground">Not configured</span>}
+                    {isPrimary && !isSecondary && <span className="text-xs text-muted-foreground">Primary only</span>}
+                  </button>
+                )
+              })}
+            </div>
+            {localSettings.secondaryProvider === localSettings.primaryProvider && (
+              <p className="text-xs text-red-600 mt-2">Fallback cannot be the same as primary.</p>
+            )}
           </div>
         </div>
 

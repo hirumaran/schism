@@ -1,16 +1,16 @@
 'use client'
 
 import { apiRequest, ApiError, providerHeaders } from '@/lib/api-client'
-import type { HealthResponse, Settings } from '@/lib/types'
+import type { HealthResponse, Provider, Settings } from '@/lib/types'
 
 export async function healthCheck(): Promise<HealthResponse> {
   return apiRequest<HealthResponse>('/health')
 }
 
-export async function validateKey(settings: Settings): Promise<boolean> {
+export async function validateKey(settings: Settings, provider?: Provider): Promise<boolean> {
   try {
     await apiRequest<HealthResponse>('/health', {
-      headers: providerHeaders(settings),
+      headers: providerHeaders(settings, { provider, includeSecondary: false }),
     })
     return true
   } catch (error) {

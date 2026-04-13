@@ -147,6 +147,7 @@ class ContradictionEngine:
                     "skipped_claim_reasons": skipped_reasons,
                 },
             )
+            self._apply_failover_meta(analysis_job, context)
 
             eligible_claims = [
                 claim
@@ -233,6 +234,7 @@ class ContradictionEngine:
                 cached_pair_count=score_summary["cached_pairs"],
                 has_contradictions=has_contradictions,
             )
+            self._apply_failover_meta(analysis_job, context)
 
             report = AnalysisReport(
                 id=analysis_job.id,
@@ -356,6 +358,7 @@ class ContradictionEngine:
                     "input_paper": input_paper_metadata.model_dump(mode="json"),
                 },
             )
+            self._apply_failover_meta(analysis_job, context)
 
             async with StageTimer("ingestion", logger):
                 (
@@ -453,6 +456,7 @@ class ContradictionEngine:
                     "skipped_claim_reasons": skipped_reasons,
                 },
             )
+            self._apply_failover_meta(analysis_job, context)
 
             eligible_claims = [
                 claim
@@ -518,6 +522,7 @@ class ContradictionEngine:
                 cached_pair_count=score_summary["cached_pairs"],
                 has_contradictions=has_contradictions,
             )
+            self._apply_failover_meta(analysis_job, context)
 
             report = AnalysisReport(
                 id=analysis_job.id,
@@ -1333,6 +1338,18 @@ class ContradictionEngine:
             raise JobAbortedError("job_cancelled")
         if latest.status == JobStatus.failed and latest.error == "job_timeout_exceeded":
             raise JobAbortedError("job_timeout_exceeded")
+
+    def _apply_failover_meta(
+        self, job: AnalysisJob, context: ProviderContext
+    ) -> None:
+        """Apply failover metadata from the ProviderContext to the AnalysisJob if any LLM call triggered failover."""
+        if context.failover_meta is None:
+            return
+        if context.failover_meta.failover_occurred:
+            job.failover_occurred = True
+            job.provider_used = context.failover_meta.provider_used
+            job.primary_error = context.failover_meta.primary_error
+            self.repository.update_job(job)
 
     async def _complete_job(
         self, job: AnalysisJob, report: AnalysisReport, has_contradictions: bool

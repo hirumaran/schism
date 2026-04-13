@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useJobPolling } from '@/lib/polling'
@@ -8,6 +8,8 @@ import { cancelJob, ApiError } from '@/lib/api'
 import { useStore } from '@/lib/store'
 import { StageList } from '@/components/analyzing/stage-list'
 import { ClaimsPreview } from '@/components/analyzing/claims-preview'
+import { PROVIDER_LABELS } from '@/lib/api-client'
+import type { Provider } from '@/lib/types'
 
 export default function JobPage() {
   const params = useParams()
@@ -15,12 +17,20 @@ export default function JobPage() {
   const jobId = params.id as string
   const { settings, updateRecentJob, addToast } = useStore()
   const [cancelling, setCancelling] = useState(false)
+  const hasNotifiedFailover = useRef(false)
 
   const { data: job, error, isLoading } = useJobPolling(jobId, settings)
 
   useEffect(() => {
     if (job?.status === 'done') {
       updateRecentJob(jobId, { status: 'done', contradiction_count: job.contradiction_count })
+      
+      if (job.failover_occurred && job.provider_used && !hasNotifiedFailover.current) {
+        hasNotifiedFailover.current = true
+        const providerName = PROVIDER_LABELS[job.provider_used as Provider] || job.provider_used
+        addToast(`Primary provider unavailable. Analysis completed using ${providerName}.`, 'info')
+      }
+
       const timeout = setTimeout(() => {
         router.push(`/reports/${jobId}`)
       }, 800)
@@ -29,7 +39,7 @@ export default function JobPage() {
     if (job?.status === 'failed') {
       updateRecentJob(jobId, { status: 'failed' })
     }
-  }, [job?.status, job?.contradiction_count, jobId, router, updateRecentJob])
+  }, [job?.status, job?.contradiction_count, job?.failover_occurred, job?.provider_used, jobId, router, updateRecentJob, addToast])
 
   const handleCancel = async () => {
     if (!confirm('Cancel this analysis?')) return
@@ -93,6 +103,11 @@ export default function JobPage() {
           <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
             <h2 className="font-serif text-lg text-red-800 mb-2">Analysis failed</h2>
             <p className="text-sm text-red-700">{job.error || 'An unknown error occurred'}</p>
+            {job.failover_occurred && job.primary_error && (
+              <p className="text-xs text-red-600 mt-2">
+                Primary provider error: {job.primary_error}
+              </p>
+            )}
           </div>
           <div className="flex gap-3 mt-4">
             <Link

@@ -57,7 +57,10 @@ export default function InputPage() {
     }
 
     // Warn about mock mode
-    if (settings.provider !== 'mock' && settings.provider !== 'ollama' && !settings.apiKey) {
+    const primaryKey = settings.primaryProvider === 'anthropic' ? settings.anthropicApiKey :
+                       settings.primaryProvider === 'openai' ? settings.openaiApiKey :
+                       settings.primaryProvider === 'ollama' && settings.ollamaMode === 'cloud' ? settings.ollamaCloudApiKey : ''
+    if (settings.primaryProvider !== 'mock' && settings.primaryProvider !== 'ollama' && !primaryKey) {
       addToast('No API key set — using mock mode', 'info')
     }
 
