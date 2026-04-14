@@ -53,41 +53,101 @@ def _default_allowed_origins() -> list[str]:
 
 @dataclass(slots=True)
 class Settings:
-    app_name: str = field(default_factory=lambda: os.getenv("SCHISM_APP_NAME", "schism"))
-    port: int = field(default_factory=lambda: int(os.getenv("PORT", os.getenv("SCHISM_PORT", "8000"))))
-    api_prefix: str = field(default_factory=lambda: os.getenv("SCHISM_API_PREFIX", "/api"))
-    database_url: str = field(default_factory=lambda: os.getenv("SCHISM_DATABASE_URL", "sqlite:///./data/schism.db"))
-    qdrant_url: str = field(default_factory=lambda: os.getenv("SCHISM_QDRANT_URL", "http://localhost:6333"))
-    qdrant_collection: str = field(default_factory=lambda: os.getenv("SCHISM_QDRANT_COLLECTION", "schism_claims"))
-    enable_qdrant: bool = field(default_factory=lambda: _bool_env("SCHISM_ENABLE_QDRANT", False))
-    frontend_url: str = field(default_factory=lambda: os.getenv("FRONTEND_URL", "http://localhost:3000"))
+    app_name: str = field(
+        default_factory=lambda: os.getenv("SCHISM_APP_NAME", "schism")
+    )
+    port: int = field(
+        default_factory=lambda: int(os.getenv("PORT", os.getenv("SCHISM_PORT", "8000")))
+    )
+    api_prefix: str = field(
+        default_factory=lambda: os.getenv("SCHISM_API_PREFIX", "/api")
+    )
+    database_url: str = field(
+        default_factory=lambda: os.getenv(
+            "SCHISM_DATABASE_URL", "sqlite:///./data/schism.db"
+        )
+    )
+    qdrant_url: str = field(
+        default_factory=lambda: os.getenv("SCHISM_QDRANT_URL", "http://localhost:6333")
+    )
+    qdrant_collection: str = field(
+        default_factory=lambda: os.getenv("SCHISM_QDRANT_COLLECTION", "schism_claims")
+    )
+    enable_qdrant: bool = field(
+        default_factory=lambda: _bool_env("SCHISM_ENABLE_QDRANT", False)
+    )
+    frontend_url: str = field(
+        default_factory=lambda: os.getenv("FRONTEND_URL", "http://localhost:3000")
+    )
     allowed_origins: list[str] = field(default_factory=_default_allowed_origins)
-    default_max_results: int = field(default_factory=lambda: int(os.getenv("SCHISM_DEFAULT_MAX_RESULTS", "25")))
-    contradiction_threshold: float = field(default_factory=lambda: float(os.getenv("SCHISM_CONTRADICTION_THRESHOLD", "0.6")))
-    min_keyword_overlap: int = field(default_factory=lambda: int(os.getenv("SCHISM_MIN_KEYWORD_OVERLAP", "1")))
+    default_max_results: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_DEFAULT_MAX_RESULTS", "25"))
+    )
+    contradiction_threshold: float = field(
+        default_factory=lambda: float(
+            os.getenv("SCHISM_CONTRADICTION_THRESHOLD", "0.6")
+        )
+    )
+    min_keyword_overlap: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_MIN_KEYWORD_OVERLAP", "1"))
+    )
     local_embedding_model: str = field(
-        default_factory=lambda: os.getenv("SCHISM_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2")
+        default_factory=lambda: os.getenv(
+            "SCHISM_EMBEDDING_MODEL", "sentence-transformers/all-MiniLM-L6-v2"
+        )
     )
-    user_agent: str = field(default_factory=lambda: os.getenv("SCHISM_USER_AGENT", "schism/0.1"))
-    contact_email: str | None = field(default_factory=lambda: os.getenv("SCHISM_CONTACT_EMAIL") or None)
-    llm_timeout_seconds: float = field(default_factory=lambda: float(os.getenv("SCHISM_LLM_TIMEOUT_SECONDS", "45")))
-    claim_concurrency: int = field(default_factory=lambda: int(os.getenv("SCHISM_CLAIM_CONCURRENCY", "4")))
-    scoring_concurrency: int = field(default_factory=lambda: int(os.getenv("SCHISM_SCORING_CONCURRENCY", "4")))
-    openai_claim_concurrency: int = field(default_factory=lambda: int(os.getenv("SCHISM_OPENAI_CLAIM_CONCURRENCY", "15")))
+    user_agent: str = field(
+        default_factory=lambda: os.getenv("SCHISM_USER_AGENT", "schism/0.1")
+    )
+    contact_email: str | None = field(
+        default_factory=lambda: os.getenv("SCHISM_CONTACT_EMAIL") or None
+    )
+    llm_timeout_seconds: float = field(
+        default_factory=lambda: float(os.getenv("SCHISM_LLM_TIMEOUT_SECONDS", "45"))
+    )
+    claim_concurrency: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_CLAIM_CONCURRENCY", "4"))
+    )
+    scoring_concurrency: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_SCORING_CONCURRENCY", "4"))
+    )
+    openai_claim_concurrency: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_OPENAI_CLAIM_CONCURRENCY", "15"))
+    )
     anthropic_claim_concurrency: int = field(
-        default_factory=lambda: int(os.getenv("SCHISM_ANTHROPIC_CLAIM_CONCURRENCY", "8"))
+        default_factory=lambda: int(
+            os.getenv("SCHISM_ANTHROPIC_CLAIM_CONCURRENCY", "8")
+        )
     )
-    query_cache_hours: int = field(default_factory=lambda: int(os.getenv("SCHISM_QUERY_CACHE_HOURS", "6")))
-    analysis_cache_hours: int = field(default_factory=lambda: int(os.getenv("SCHISM_ANALYSIS_CACHE_HOURS", "24")))
-    job_timeout_minutes: int = field(default_factory=lambda: int(os.getenv("SCHISM_JOB_TIMEOUT_MINUTES", "15")))
-    log_level: str = field(default_factory=lambda: os.getenv("LOG_LEVEL", os.getenv("SCHISM_LOG_LEVEL", "INFO")))
+    query_cache_hours: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_QUERY_CACHE_HOURS", "6"))
+    )
+    analysis_cache_hours: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_ANALYSIS_CACHE_HOURS", "24"))
+    )
+    job_timeout_minutes: int = field(
+        default_factory=lambda: int(os.getenv("SCHISM_JOB_TIMEOUT_MINUTES", "15"))
+    )
+    compression_ratio: float = field(
+        default_factory=lambda: float(os.getenv("SCHISM_COMPRESSION_RATIO", "0.3"))
+    )
+    summarization_algorithm: str = field(
+        default_factory=lambda: os.getenv("SCHISM_SUMMARIZATION_ALGORITHM", "textrank")
+    )
+    log_level: str = field(
+        default_factory=lambda: os.getenv(
+            "LOG_LEVEL", os.getenv("SCHISM_LOG_LEVEL", "INFO")
+        )
+    )
     log_format: str = field(default_factory=lambda: os.getenv("LOG_FORMAT", "human"))
 
     @property
     def sqlite_path(self) -> Path:
         prefix = "sqlite:///"
         if not self.database_url.startswith(prefix):
-            raise ValueError("Only sqlite:/// URLs are supported in the local repository.")
+            raise ValueError(
+                "Only sqlite:/// URLs are supported in the local repository."
+            )
         return Path(self.database_url.removeprefix(prefix))
 
 

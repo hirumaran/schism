@@ -12,6 +12,9 @@ except Exception:  # pragma: no cover - optional at import time for tests
     PdfReader = None
 
 
+from app.services.summarizer import DocumentCompressor
+
+
 SECTION_HEADINGS = {
     "abstract",
     "summary",
@@ -39,6 +42,7 @@ class ExtractedSections(BaseModel):
     abstract: str | None = None
     conclusion: str | None = None
     full_text: str
+    compressed_text: str | None = None
     best_section: str
 
 
@@ -80,15 +84,43 @@ class PaperInputParser:
         return ParsedInput(text=stripped, title=resolved_title)
 
     def extract_sections(self, text: str) -> ExtractedSections:
+        from app.config import get_settings
+
+        settings = get_settings()
+
         normalized = self._normalize_text(text)
         lines = normalized.split("\n")
         abstract = self._extract_section(lines, ABSTRACT_HEADINGS)
         conclusion = self._extract_section(lines, CONCLUSION_HEADINGS)
-        best_section = abstract or conclusion or normalized[:3000]
+
+        compressor = DocumentCompressor(
+            algorithm=settings.summarization_algorithm, ratio=settings.compression_ratio
+        )
+        body_parts = []
+        if abstract:
+            body_parts.append(f"Abstract:\n{abstract}")
+
+        # For simplicity, if we compress the whole text (it drops math and handles length logic)
+        # We can extract the compressed text.
+        compressed = compressor.compress(normalized)
+        if compressed and compressed != normalized:
+            if not abstract and not conclusion:
+                compressed_text = compressed
+            else:
+                body_parts.append(f"Body:\n{compressed}")
+                if conclusion:
+                    body_parts.append(f"Conclusion:\n{conclusion}")
+                compressed_text = "\n\n".join(body_parts)
+        else:
+            compressed_text = normalized
+
+        best_section = abstract or conclusion or compressed_text[:3000]
+
         return ExtractedSections(
             abstract=abstract,
             conclusion=conclusion,
             full_text=normalized,
+            compressed_text=compressed_text,
             best_section=best_section,
         )
 

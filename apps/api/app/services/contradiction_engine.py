@@ -801,11 +801,12 @@ class ContradictionEngine:
             source="user_input",
             external_id=job_id,
             title=title,
-            abstract=sections.best_section[:2000],
+            abstract=(sections.compressed_text or sections.best_section)[:3000],
             population=primary_claim.population if primary_claim else None,
             outcome=primary_claim.outcome if primary_claim else None,
             raw={
                 "filename": parsed_input.filename,
+                "full_text": sections.compressed_text or sections.full_text,
                 "input_claims": [
                     claim.model_dump(mode="json") for claim in input_claims
                 ],
