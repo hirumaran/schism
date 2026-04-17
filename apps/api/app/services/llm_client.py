@@ -23,6 +23,7 @@ from app.services.llm_parser import (
     InputClaimsResult,
     parse_llm_json,
 )
+from app.services.summarizer import DocumentCompressor
 
 logger = logging.getLogger(__name__)
 
@@ -238,18 +239,39 @@ def _is_non_retriable_4xx(status_code: int | None) -> bool:
 
 
 class LLMClient:
-    def __init__(self, settings: Settings) -> None:
+    def __init__(
+        self, settings: Settings, compressor: DocumentCompressor | None = None
+    ) -> None:
         self.settings = settings
+        self.compressor = compressor
 
+    def _compress_abstract(
+        self,
+        abstract: str,
+        compressor: DocumentCompressor | None,
+    ) -> str:
+        if compressor is None or not abstract:
+            return abstract
+        try:
+            compressed = compressor.compress(abstract)
+            # If the compressor returns None, or very short text, fall back to original
+            if not compressed or len(compressed.split()) < 20:
+                return abstract
+            return compressed
+        except Exception as exc:
+            logger.warning("abstract_compression_failed", extra={"error": str(exc)})
+            return abstract
 
-    async def generate_paper_breakdown(self, paper: Paper, context: ProviderContext) -> PaperBreakdown | None:
+    async def generate_paper_breakdown(
+        self, paper: Paper, context: ProviderContext
+    ) -> PaperBreakdown | None:
         if self._should_use_fallback(context):
             return None
-        
+
         full_text = ""
         if hasattr(paper, "raw") and paper.raw and isinstance(paper.raw, dict):
             full_text = str(paper.raw.get("full_text", ""))[:4000]
-        
+
         try:
             raw_content = await self.failover_invoke(
                 system_prompt=BREAKDOWN_SYSTEM_PROMPT,
@@ -285,11 +307,14 @@ class LLMClient:
         if self._should_use_fallback(context):
             return self._finalize_claim(self._heuristic_claim(paper, context))
 
+        abstract = (paper.abstract or "").strip()
+        compressed_abstract = self._compress_abstract(abstract, self.compressor)
+
         primary = await self._extract_claim_via_llm(
             paper=paper,
             context=context,
             user_prompt=CLAIM_USER_PROMPT.format(
-                title=paper.title.strip(), abstract=(paper.abstract or "").strip()
+                title=paper.title.strip(), abstract=compressed_abstract
             ),
         )
         if primary is not None:
@@ -299,7 +324,7 @@ class LLMClient:
             paper=paper,
             context=context,
             user_prompt=CLAIM_FALLBACK_PROMPT.format(
-                title=paper.title.strip(), abstract=(paper.abstract or "").strip()
+                title=paper.title.strip(), abstract=compressed_abstract
             ),
         )
         if fallback is not None:

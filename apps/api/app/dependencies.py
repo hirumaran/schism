@@ -14,6 +14,7 @@ from app.services.llm_client import LLMClient, ProviderContext
 from app.services.paper_input import PaperInputParser
 from app.services.report_exporter import ReportExporter
 from app.services.vector_store import VectorStore
+from app.services.summarizer import DocumentCompressor
 
 
 @lru_cache
@@ -45,8 +46,17 @@ def get_vector_store() -> VectorStore:
 
 
 @lru_cache
+def get_compressor() -> DocumentCompressor:
+    settings = get_settings()
+    return DocumentCompressor(
+        algorithm=settings.summarization_algorithm,
+        ratio=settings.compression_ratio,
+    )
+
+
+@lru_cache
 def get_llm_client() -> LLMClient:
-    return LLMClient(get_settings())
+    return LLMClient(settings=get_settings(), compressor=get_compressor())
 
 
 @lru_cache

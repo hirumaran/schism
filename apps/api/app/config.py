@@ -129,7 +129,7 @@ class Settings:
         default_factory=lambda: int(os.getenv("SCHISM_JOB_TIMEOUT_MINUTES", "15"))
     )
     compression_ratio: float = field(
-        default_factory=lambda: float(os.getenv("SCHISM_COMPRESSION_RATIO", "0.3"))
+        default_factory=lambda: float(os.getenv("SCHISM_COMPRESSION_RATIO", "0.35"))
     )
     summarization_algorithm: str = field(
         default_factory=lambda: os.getenv("SCHISM_SUMMARIZATION_ALGORITHM", "textrank")

@@ -81,6 +81,7 @@ class ContradictionEngine:
 
         warnings: list[str] = []
         search_run: SearchRun | None = None
+        paper_breakdown = None
         try:
             await self._check_job_active(analysis_job.id)
             await self._update_job(
@@ -362,6 +363,7 @@ class ContradictionEngine:
 
         warnings: list[str] = []
         search_run: SearchRun | None = None
+        paper_breakdown = None
         try:
             await self._check_job_active(analysis_job.id)
             input_claims = await self.llm_client.extract_input_claims(
