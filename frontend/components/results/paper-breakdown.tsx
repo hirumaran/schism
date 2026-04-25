@@ -87,13 +87,13 @@ export function PaperBreakdown({ breakdown }: PaperBreakdownProps) {
         {/* Limitations */}
         <div className="space-y-4">
           <h3 className="text-xl font-serif border-b pb-2 flex items-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-amber-500"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-warning"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
             Limitations
           </h3>
           <ul className="space-y-2">
             {breakdown.limitations.map((limitation, i) => (
               <li key={i} className="flex gap-2 text-sm text-muted-foreground">
-                <span className="text-amber-500/70 mt-1">•</span>
+                <span className="text-warning/70 mt-1">•</span>
                 <span>{limitation}</span>
               </li>
             ))}

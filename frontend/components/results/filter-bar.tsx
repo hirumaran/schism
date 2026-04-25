@@ -19,9 +19,9 @@ export function FilterBar({
 }: FilterBarProps) {
   const types: { value: ContradictionType | 'all'; label: string; dot?: string }[] = [
     { value: 'all', label: 'All types' },
-    { value: 'direct', label: 'Direct', dot: 'bg-red-500' },
-    { value: 'conditional', label: 'Conditional', dot: 'bg-amber-500' },
-    { value: 'methodological', label: 'Methodological', dot: 'bg-gray-400' },
+    { value: 'direct', label: 'Direct', dot: 'bg-destructive' },
+    { value: 'conditional', label: 'Conditional', dot: 'bg-warning' },
+    { value: 'methodological', label: 'Methodological', dot: 'bg-muted-foreground' },
   ]
 
   return (

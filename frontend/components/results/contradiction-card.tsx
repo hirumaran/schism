@@ -11,9 +11,8 @@ interface ContradictionCardProps {
 
 function HighlightedAbstract({ text, claim }: { text: string | null; claim: string | null }) {
   if (!text) return <p className="text-sm italic opacity-50">No abstract available</p>
-  if (!claim) return <p className="text-sm">{text}</p>
+  if (!claim) return <p className="text-sm text-foreground/90">{text}</p>
 
-  // Try to find the exact claim in the abstract
   const claimIndex = text.toLowerCase().indexOf(claim.toLowerCase())
   
   if (claimIndex !== -1) {
@@ -23,22 +22,21 @@ function HighlightedAbstract({ text, claim }: { text: string | null; claim: stri
     
     return (
       <div className="text-sm leading-relaxed space-y-4">
-        <p>
+        <p className="text-foreground/90">
           {before}
-          <mark className="bg-amber-200/60 dark:bg-amber-900/40 text-amber-900 dark:text-amber-100 rounded-sm px-1 py-0.5">{match}</mark>
+          <mark className="bg-accent/20 dark:bg-accent/30 text-foreground rounded-sm px-1 py-0.5">{match}</mark>
           {after}
         </p>
       </div>
     )
   }
 
-  // Fallback: claim not found inline
   return (
     <div className="text-sm leading-relaxed space-y-4">
-      <p>{text}</p>
-      <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200/50 dark:border-amber-900/50 rounded-md">
-        <p className="text-xs font-semibold text-amber-800 dark:text-amber-400 mb-1 uppercase tracking-wider">Extracted Claim</p>
-        <p className="text-amber-900 dark:text-amber-100 font-medium italic">{claim}</p>
+      <p className="text-foreground/90">{text}</p>
+      <div className="mt-4 p-3 bg-warning/10 dark:bg-warning/15 border border-warning/20 dark:border-warning/25 rounded-md">
+        <p className="text-xs font-semibold text-warning dark:text-warning/90 mb-1 uppercase tracking-wider">Extracted Claim</p>
+        <p className="text-foreground/90 font-medium italic">{claim}</p>
       </div>
     </div>
   )
@@ -106,24 +104,24 @@ export function ContradictionCard({ pair }: ContradictionCardProps) {
   const getTypeBadge = () => {
     switch (pair.type) {
       case 'direct':
-        return 'bg-red-100 text-red-800 border-red-200'
+        return 'bg-destructive/10 text-destructive border-destructive/20'
       case 'conditional':
-        return 'bg-amber-100 text-amber-800 border-amber-200'
+        return 'bg-warning/10 text-warning border-warning/20'
       case 'methodological':
-        return 'bg-slate-100 text-slate-800 border-slate-200'
+        return 'bg-muted text-muted-foreground border-border'
       default:
-        return 'bg-slate-100 text-slate-800 border-slate-200'
+        return 'bg-muted text-muted-foreground border-border'
     }
   }
 
   const getScoreColor = () => {
-    if (pair.score > 0.8) return 'text-red-600'
-    return 'text-amber-600'
+    if (pair.score > 0.8) return 'text-destructive'
+    return 'text-warning'
   }
 
   const getBarColor = () => {
-    if (pair.score > 0.8) return 'bg-gradient-to-r from-red-500 to-red-600'
-    return 'bg-gradient-to-r from-amber-500 to-amber-600'
+    if (pair.score > 0.8) return 'bg-gradient-to-r from-destructive/80 to-destructive'
+    return 'bg-gradient-to-r from-warning/80 to-warning'
   }
 
   const handleCopy = () => {
@@ -214,11 +212,11 @@ export function ContradictionCard({ pair }: ContradictionCardProps) {
           )}
 
           {pair.could_both_be_true && (
-            <div className="flex items-start gap-3 p-4 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50 rounded-lg">
-              <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="flex items-start gap-3 p-4 bg-warning/10 dark:bg-warning/15 border border-warning/20 dark:border-warning/25 rounded-lg">
+              <AlertTriangle className="w-5 h-5 text-warning flex-shrink-0 mt-0.5" />
               <div>
-                <h4 className="text-sm font-semibold text-amber-800 dark:text-amber-400">Contextual Compatibility</h4>
-                <p className="text-sm text-amber-700/90 dark:text-amber-500/90 mt-1 leading-relaxed">
+                <h4 className="text-sm font-semibold text-warning dark:text-warning/90">Contextual Compatibility</h4>
+                <p className="text-sm text-foreground/80 mt-1 leading-relaxed">
                   These findings may not be mutually exclusive. The contradiction could be explained by methodological differences, different populations, or distinct experimental conditions rather than one paper being factually incorrect.
                 </p>
               </div>

@@ -88,7 +88,7 @@ function OverviewTab() {
         <h3 className="font-serif text-lg mb-3">Contradiction types</h3>
         <div className="space-y-3">
           <div className="flex items-start gap-3">
-            <span className="w-2 h-2 rounded-full bg-red-500 mt-1.5" />
+            <span className="w-2 h-2 rounded-full bg-destructive mt-1.5" />
             <div>
               <span className="text-sm font-medium">Direct</span>
               <p className="text-xs text-muted-foreground">
@@ -97,7 +97,7 @@ function OverviewTab() {
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="w-2 h-2 rounded-full bg-amber-500 mt-1.5" />
+            <span className="w-2 h-2 rounded-full bg-warning mt-1.5" />
             <div>
               <span className="text-sm font-medium">Conditional</span>
               <p className="text-xs text-muted-foreground">
@@ -106,7 +106,7 @@ function OverviewTab() {
             </div>
           </div>
           <div className="flex items-start gap-3">
-            <span className="w-2 h-2 rounded-full bg-gray-400 mt-1.5" />
+            <span className="w-2 h-2 rounded-full bg-muted-foreground mt-1.5" />
             <div>
               <span className="text-sm font-medium">Methodological</span>
               <p className="text-xs text-muted-foreground">
@@ -254,10 +254,10 @@ X-Model:    model-name (optional, uses default)`}
                 <span
                   className={`text-xs font-mono px-2 py-0.5 rounded ${
                     route.method === 'GET'
-                      ? 'bg-green-100 text-green-700'
+                      ? 'bg-success/15 text-success'
                       : route.method === 'POST'
-                        ? 'bg-blue-100 text-blue-700'
-                        : 'bg-red-100 text-red-700'
+                        ? 'bg-primary/15 text-primary'
+                        : 'bg-destructive/15 text-destructive'
                   }`}
                 >
                   {route.method}

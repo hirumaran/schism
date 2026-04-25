@@ -106,8 +106,8 @@ export default function ReportsPage() {
     return (
       <div className="pt-16">
         <div className="p-6">
-          <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-            <p className="text-red-700">
+          <div className="p-4 border border-destructive/20 bg-destructive/10 rounded-lg">
+            <p className="text-destructive">
               {reportError instanceof ApiError
                 ? reportError.message
                 : resultsError instanceof ApiError

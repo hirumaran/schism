@@ -90,7 +90,7 @@ export function Recommendations({ jobId, searchQueries }: RecommendationsProps) 
       {data.videos.length > 0 && (
         <div className="space-y-4">
           <h4 className="text-lg font-medium flex items-center gap-2">
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-500"><path d="M2.27 16.126A10 10 0 0 1 12 2a10 10 0 0 1 9.73 14.126 1 1 0 0 1-.84.664l-4.14.734a1 1 0 0 0-.69.34l-2.45 2.822a1 1 0 0 1-1.56 0l-2.45-2.822a1 1 0 0 0-.69-.34l-4.14-.734a1 1 0 0 1-.84-.664Z"/><path d="M10 8.5v7l5-3.5-5-3.5Z"/></svg>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-destructive"><path d="M2.27 16.126A10 10 0 0 1 12 2a10 10 0 0 1 9.73 14.126 1 1 0 0 1-.84.664l-4.14.734a1 1 0 0 0-.69.34l-2.45 2.822a1 1 0 0 1-1.56 0l-2.45-2.822a1 1 0 0 0-.69-.34l-4.14-.734a1 1 0 0 1-.84-.664Z"/><path d="M10 8.5v7l5-3.5-5-3.5Z"/></svg>
             Video Explainers
           </h4>
           <div className="flex gap-4 overflow-x-auto pb-4 snap-x">

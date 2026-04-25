@@ -385,13 +385,13 @@ export function SettingsModal() {
                   {fetchingModels ? 'Fetching models...' : validating ? 'Checking...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
-                  <p className="text-sm text-green-600">Backend is reachable</p>
+                  <p className="text-sm text-success">Backend is reachable</p>
                 )}
                 {validationResult === 'invalid' && (
-                  <p className="text-sm text-red-600">Backend check failed</p>
+                  <p className="text-sm text-destructive">Backend check failed</p>
                 )}
                 {validationResult === 'error' && (
-                  <p className="text-sm text-red-600">Could not reach the Schism backend</p>
+                  <p className="text-sm text-destructive">Could not reach the Schism backend</p>
                 )}
               </div>
             </>
@@ -467,13 +467,13 @@ export function SettingsModal() {
                   {fetchingModels ? 'Fetching models...' : validating ? 'Checking...' : 'Check backend connection'}
                 </button>
                 {validationResult === 'valid' && (
-                  <p className="text-sm text-green-600">Backend is reachable</p>
+                  <p className="text-sm text-success">Backend is reachable</p>
                 )}
                 {validationResult === 'invalid' && (
-                  <p className="text-sm text-red-600">Backend check failed</p>
+                  <p className="text-sm text-destructive">Backend check failed</p>
                 )}
                 {validationResult === 'error' && (
-                  <p className="text-sm text-red-600">Could not reach the Schism backend</p>
+                  <p className="text-sm text-destructive">Could not reach the Schism backend</p>
                 )}
               </div>
             </>
@@ -625,10 +625,10 @@ export function SettingsModal() {
                     : (isOllamaCloud ? 'Validate key' : 'Test connection')}
                 </button>
                 {validationResult === 'valid' && ollamaValidationMessage && (
-                  <p className="text-sm text-green-600">{ollamaValidationMessage}</p>
+                  <p className="text-sm text-success">{ollamaValidationMessage}</p>
                 )}
                 {validationResult === 'error' && ollamaValidationMessage && (
-                  <p className="text-sm text-red-600">{ollamaValidationMessage}</p>
+                  <p className="text-sm text-destructive">{ollamaValidationMessage}</p>
                 )}
               </div>
             </>
@@ -731,7 +731,7 @@ export function SettingsModal() {
             {!localSettings.anthropicApiKey && !localSettings.openaiApiKey &&
              (localSettings.ollamaMode === 'cloud' ? !localSettings.ollamaCloudApiKey : !localSettings.ollamaLocalBaseUrl) &&
              localSettings.primaryProvider !== 'mock' && (
-              <p className="text-xs text-amber-600 mt-2">
+              <p className="text-xs text-warning mt-2">
                 No API keys detected. Configure a provider above or set Primary to &quot;Mock&quot;.
               </p>
             )}
@@ -789,7 +789,7 @@ export function SettingsModal() {
               })}
             </div>
             {localSettings.secondaryProvider === localSettings.primaryProvider && (
-              <p className="text-xs text-red-600 mt-2">Fallback cannot be the same as primary.</p>
+              <p className="text-xs text-destructive mt-2">Fallback cannot be the same as primary.</p>
             )}
           </div>
         </div>

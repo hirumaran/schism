@@ -8,7 +8,7 @@ export function Topbar() {
   const { setSettingsOpen, setDocsOpen } = useStore()
 
   const getStatusDot = () => {
-    return 'bg-green-500'
+    return 'bg-success'
   }
 
   return (

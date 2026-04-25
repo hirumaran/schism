@@ -19,7 +19,7 @@ export function AutocompleteDropdown({
   if (!suggestions.length) return null
 
   return (
-    <div className="absolute top-full left-0 right-0 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-lg overflow-hidden z-50 py-2">
+    <div className="absolute top-full left-0 right-0 mt-2 bg-popover border border-border rounded-lg shadow-lg overflow-hidden z-50 py-2">
       <ul className="max-h-80 overflow-y-auto">
         {suggestions.map((suggestion, index) => {
           const isSelected = index === selectedIndex
@@ -30,8 +30,8 @@ export function AutocompleteDropdown({
               key={`${suggestion.tier}-${suggestion.text}-${index}`}
               className={`flex items-center justify-between px-4 py-2 cursor-pointer transition-colors ${
                 isSelected
-                  ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100'
-                  : 'text-zinc-600 dark:text-zinc-400 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 hover:text-zinc-900 dark:hover:text-zinc-100'
+                  ? 'bg-accent/15 text-foreground'
+                  : 'text-muted-foreground hover:bg-accent/10 hover:text-foreground'
               }`}
               onMouseDown={(e) => {
                 e.preventDefault() // prevent input blur
@@ -46,7 +46,7 @@ export function AutocompleteDropdown({
               {suggestion.tier === 'recent' && (
                 <button
                   type="button"
-                  className="p-1 ml-2 text-zinc-400 hover:text-red-500 rounded-md transition-colors"
+                  className="p-1 ml-2 text-muted-foreground hover:text-destructive rounded-md transition-colors"
                   onMouseDown={(e) => {
                     e.preventDefault()
                     e.stopPropagation()

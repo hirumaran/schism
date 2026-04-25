@@ -23,7 +23,7 @@ export function ProviderBadge() {
   return (
     <button
       onClick={() => setSettingsOpen(true)}
-      className={`text-sm ${isMock ? 'text-amber-600' : 'text-muted-foreground'} hover:underline`}
+      className={`text-sm ${isMock ? 'text-warning' : 'text-muted-foreground'} hover:underline`}
     >
       Provider: {getLabel()}
     </button>

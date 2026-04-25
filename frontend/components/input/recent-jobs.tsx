@@ -13,13 +13,13 @@ export function RecentJobs() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'done':
-        return 'bg-green-100 dark:bg-green-900/20 dark:text-green-300 text-green-800'
+        return 'bg-success/15 text-success'
       case 'failed':
-        return 'bg-red-100 dark:bg-red-900/20 dark:text-red-300 text-red-800'
+        return 'bg-destructive/15 text-destructive'
       case 'cancelled':
-        return 'bg-gray-100 dark:bg-gray-900/20 dark:text-gray-300 text-gray-800'
+        return 'bg-muted text-muted-foreground'
       default:
-        return 'bg-amber-100 dark:bg-amber-900/20 dark:text-amber-300 text-amber-800'
+        return 'bg-warning/15 text-warning'
     }
   }
 

@@ -12,17 +12,17 @@ interface ClaimsSidebarProps {
 export function ClaimsSidebar({ results, activePairId, onPairClick }: ClaimsSidebarProps) {
   const getTypeBadge = (type: string | null) => {
     switch (type) {
-      case 'direct': return 'bg-red-100 text-red-700 border-red-200'
-      case 'conditional': return 'bg-amber-100 text-amber-700 border-amber-200'
-      case 'methodological': return 'bg-gray-100 text-gray-700 border-gray-200'
-      default: return 'bg-gray-100 text-gray-700 border-gray-200'
+      case 'direct': return 'bg-destructive/10 text-destructive border-destructive/20'
+      case 'conditional': return 'bg-warning/10 text-warning border-warning/20'
+      case 'methodological': return 'bg-muted text-muted-foreground border-border'
+      default: return 'bg-muted text-muted-foreground border-border'
     }
   }
 
   const getScoreColor = (score: number) => {
-    if (score > 0.8) return 'text-red-600'
-    if (score >= 0.6) return 'text-amber-600'
-    return 'text-green-600'
+    if (score > 0.8) return 'text-destructive'
+    if (score >= 0.6) return 'text-warning'
+    return 'text-success'
   }
 
   return (

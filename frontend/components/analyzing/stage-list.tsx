@@ -119,15 +119,15 @@ export function StageList({ job }: StageListProps) {
           <div key={i} className="flex items-start gap-3">
             <div className="mt-0.5">
               {status === 'done' && (
-                <div className="w-4 h-4 rounded-full bg-green-500 flex items-center justify-center">
-                  <Check className="w-2.5 h-2.5 text-white" />
+                <div className="w-4 h-4 rounded-full bg-success flex items-center justify-center">
+                  <Check className="w-2.5 h-2.5 text-success-foreground" />
                 </div>
               )}
               {status === 'active' && (
-                <div className="w-4 h-4 rounded-full bg-amber-500 animate-pulse" />
+                <div className="w-4 h-4 rounded-full bg-warning animate-pulse" />
               )}
               {status === 'pending' && (
-                <div className="w-4 h-4 rounded-full border-2 border-gray-300" />
+                <div className="w-4 h-4 rounded-full border-2 border-muted-foreground/30" />
               )}
             </div>
             <div className="flex-1">

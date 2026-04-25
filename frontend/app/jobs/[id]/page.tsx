@@ -70,8 +70,8 @@ export default function JobPage() {
     return (
       <div className="pt-20 pb-16 px-6">
         <div className="max-w-[560px] mx-auto">
-          <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-            <p className="text-red-700">
+          <div className="p-4 border border-destructive/20 bg-destructive/10 rounded-lg">
+            <p className="text-destructive">
               {error instanceof ApiError ? error.message : 'Failed to load job'}
             </p>
           </div>
@@ -100,11 +100,11 @@ export default function JobPage() {
     return (
       <div className="pt-20 pb-16 px-6">
         <div className="max-w-[560px] mx-auto">
-          <div className="p-4 border border-red-200 bg-red-50 rounded-lg">
-            <h2 className="font-serif text-lg text-red-800 mb-2">Analysis failed</h2>
-            <p className="text-sm text-red-700">{job.error || 'An unknown error occurred'}</p>
+          <div className="p-4 border border-destructive/20 bg-destructive/10 rounded-lg">
+            <h2 className="font-serif text-lg text-destructive mb-2">Analysis failed</h2>
+            <p className="text-sm text-destructive/90">{job.error || 'An unknown error occurred'}</p>
             {job.failover_occurred && job.primary_error && (
-              <p className="text-xs text-red-600 mt-2">
+              <p className="text-xs text-destructive/70 mt-2">
                 Primary provider error: {job.primary_error}
               </p>
             )}
@@ -141,7 +141,7 @@ export default function JobPage() {
           </span>
           <h1 className="font-serif text-2xl mt-1">{job.query}</h1>
           {job.mode === 'paper_vs_corpus' && (
-            <span className="inline-block mt-2 px-2 py-0.5 text-xs bg-amber-100 text-amber-700 rounded-full">
+            <span className="inline-block mt-2 px-2 py-0.5 text-xs bg-warning/15 text-warning rounded-full">
               Paper input mode
             </span>
           )}

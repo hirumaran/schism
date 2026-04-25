@@ -175,7 +175,7 @@ export default function InputPage() {
           />
 
           {error && (
-            <p className="text-sm text-red-600">{error}</p>
+            <p className="text-sm text-destructive">{error}</p>
           )}
 
           <div className="pt-4 space-y-3">
